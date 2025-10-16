@@ -4,18 +4,17 @@ export async function POST(request) {
 
     const response = await fetch(`http://${ipAddress}:${port}/api/stop`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
+    }).catch(() => null);
 
     return Response.json({
       success: true,
-      message: 'Simulación detenida'
+      message: 'Detenido'
     });
 
   } catch (error) {
     return Response.json({
       success: false,
-      message: 'Error al detener: ' + error.message
+      message: error.message
     }, { status: 500 });
   }
 }

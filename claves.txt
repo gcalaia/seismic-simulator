@@ -1,0 +1,28 @@
+const char* ssid = "unifi_wifly";
+const char* password = "0802112007";
+
+
+https://seismic-simulator-default-rtdb.firebaseio.com/
+
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCT7Dzogls_yzdyoEBBjrbcwuvTBTaTuAQ",
+  authDomain: "seismic-simulator.firebaseapp.com",
+  databaseURL: "https://seismic-simulator-default-rtdb.firebaseio.com",
+  projectId: "seismic-simulator",
+  storageBucket: "seismic-simulator.firebasestorage.app",
+  messagingSenderId: "283196505135",
+  appId: "1:283196505135:web:2efb6cf1bf170a321edada"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+Base de datos
+ Secretos  - WtYi1mvWhaxcJyOIpHSYOEqj9T0CoGPAcjMeU0i0	
+

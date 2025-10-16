@@ -1,0 +1,418 @@
+/*
+ * Simulador Sísmico ESP32 + DRV8825
+ * Para mecanismo BIELA-MANIVELA
+ * Control de frecuencia mediante velocidad de rotación continua
+ */
+
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include <addons/TokenHelper.h>
+#include <addons/RTDBHelper.h>
+#include <Preferences.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
+// ==========================================
+// CONFIGURACIÓN FIREBASE
+// ==========================================
+#define FIREBASE_HOST "seismic-simulator-default-rtdb.firebaseio.com"
+#define FIREBASE_AUTH "WtYi1mvWhaxcJyOIpHSYOEqj9T0CoGPAcjMeU0i0"
+#define DEVICE_ID "LAB_01"
+
+// ==========================================
+// PINES DEL MOTOR DRV8825
+// ==========================================
+#define STEP_PIN 25
+#define DIR_PIN 26
+#define EN_PIN 27
+#define MODE0_PIN 14
+#define MODE1_PIN 12
+#define MODE2_PIN 13
+
+// ==========================================
+// CONFIGURACIÓN DEL MOTOR Y MECANISMO
+// ==========================================
+#define STEPS_PER_REV 200        // Pasos del motor NEMA
+#define MICROSTEPS 8             // 1/8 micropasos
+#define TOTAL_STEPS_PER_REV (STEPS_PER_REV * MICROSTEPS)  // = 1600
+
+// BIELA-MANIVELA: Parámetros físicos
+#define CRANK_RADIUS_MM 50       // Radio de la manivela (ajustar según diseño)
+#define MAX_AMPLITUDE_MM 100     // Amplitud máxima teórica (2 * radio)
+
+// Límites de velocidad
+#define MIN_STEP_DELAY_US 500    // Velocidad máxima (frecuencia alta)
+#define MAX_STEP_DELAY_US 20000  // Velocidad mínima (frecuencia baja)
+
+// Objetos Firebase
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+// WiFi
+WebServer server(80);
+Preferences preferences;
+String ssid_config = "";
+String password_config = "";
+bool isConfigMode = false;
+
+// NTP
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000);
+
+// Control del motor
+bool motorEnabled = false;
+unsigned long lastStepTime = 0;
+int stepDelayMicros = 5000;
+float currentFrequency = 1.0;      // Hz (revoluciones por segundo)
+int currentAmplitude = 50;         // Porcentaje (no se usa en biela-manivela fija)
+unsigned long totalSteps = 0;      // Contador de pasos totales
+
+// Firebase
+bool firebaseReady = false;
+unsigned long lastFirebaseRead = 0;
+unsigned long lastFirebaseWrite = 0;
+const unsigned long FIREBASE_READ_INTERVAL = 1000;
+const unsigned long FIREBASE_WRITE_INTERVAL = 2000;
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  // Configurar pines del motor
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(EN_PIN, OUTPUT);
+  pinMode(MODE0_PIN, OUTPUT);
+  pinMode(MODE1_PIN, OUTPUT);
+  pinMode(MODE2_PIN, OUTPUT);
+  
+  // Configurar micropasos 1/8
+  digitalWrite(MODE0_PIN, HIGH);
+  digitalWrite(MODE1_PIN, HIGH);
+  digitalWrite(MODE2_PIN, LOW);
+  
+  // Motor deshabilitado inicialmente
+  digitalWrite(EN_PIN, HIGH);
+  digitalWrite(DIR_PIN, HIGH);  // Dirección fija para rotación continua
+  
+  Serial.println("\n╔════════════════════════════════════════╗");
+  Serial.println("║  🌍 Simulador Sísmico - BIELA-MANIVELA║");
+  Serial.println("╚════════════════════════════════════════╝\n");
+  Serial.printf("⚙️  Micropasos: 1/%d\n", MICROSTEPS);
+  Serial.printf("⚙️  Pasos por vuelta: %d\n", TOTAL_STEPS_PER_REV);
+  Serial.printf("⚙️  Radio manivela: %dmm\n", CRANK_RADIUS_MM);
+  Serial.printf("⚙️  Amplitud máxima: %dmm\n\n", MAX_AMPLITUDE_MM);
+  
+  // Cargar WiFi
+  preferences.begin("wifi", false);
+  ssid_config = preferences.getString("ssid", "");
+  password_config = preferences.getString("password", "");
+  preferences.end();
+  
+  if (ssid_config == "") {
+    startConfigMode();
+  } else {
+    connectToWiFi();
+    if (WiFi.status() == WL_CONNECTED) {
+      setupFirebase();
+    }
+  }
+  
+  setupWebServer();
+  server.begin();
+  
+  Serial.println("🚀 Sistema iniciado\n");
+}
+
+void startConfigMode() {
+  isConfigMode = true;
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP("SeismicSim_Setup", "");
+  
+  Serial.println("\n╔════════════════════════════════════════╗");
+  Serial.println("║    MODO CONFIGURACIÓN WiFi             ║");
+  Serial.println("╚════════════════════════════════════════╝");
+  Serial.println("📶 Red: SeismicSim_Setup");
+  Serial.println("🌐 IP: 192.168.4.1\n");
+}
+
+void connectToWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid_config.c_str(), password_config.c_str());
+  
+  Serial.print("Conectando a WiFi");
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✅ WiFi conectado!");
+    Serial.print("📡 IP: ");
+    Serial.println(WiFi.localIP());
+    
+    if (MDNS.begin("seismic")) {
+      Serial.println("📡 mDNS: http://seismic.local");
+    }
+    
+    timeClient.begin();
+    timeClient.update();
+  } else {
+    Serial.println("\n❌ Error WiFi - Reiniciando...");
+    preferences.begin("wifi", false);
+    preferences.clear();
+    preferences.end();
+    delay(2000);
+    ESP.restart();
+  }
+}
+
+void setupFirebase() {
+  Serial.println("\n🔥 Configurando Firebase...");
+  
+  config.database_url = FIREBASE_HOST;
+  config.signer.tokens.legacy_token = FIREBASE_AUTH;
+  
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+  
+  fbdo.setBSSLBufferSize(4096, 1024);
+  fbdo.setResponseSize(2048);
+  
+  firebaseReady = true;
+  Serial.println("✅ Firebase conectado!");
+  
+  delay(1000);
+  registerDevice();
+}
+
+void registerDevice() {
+  Serial.println("📝 Registrando dispositivo...");
+  
+  String path = "/devices/" + String(DEVICE_ID);
+  
+  FirebaseJson json;
+  json.set("name", "Mesa Vibratoria Biela-Manivela");
+  json.set("status", "online");
+  json.set("ip", WiFi.localIP().toString());
+  json.set("lastSeen", (int)timeClient.getEpochTime());
+  json.set("firmware", "v1.0-BIELA");
+  json.set("microsteps", MICROSTEPS);
+  json.set("mechanismType", "crank-slider");
+  json.set("crankRadius", CRANK_RADIUS_MM);
+  json.set("maxAmplitude", MAX_AMPLITUDE_MM);
+  
+  json.set("commands/motorEnabled", false);
+  json.set("commands/frequency", 1.0);
+  json.set("commands/amplitude", 100);
+  
+  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
+    Serial.println("✅ Dispositivo registrado");
+  } else {
+    Serial.println("❌ Error: " + fbdo.errorReason());
+  }
+}
+
+void setupWebServer() {
+  server.on("/", HTTP_GET, []() {
+    if (isConfigMode) {
+      server.send(200, "text/html", getConfigHTML());
+    } else {
+      String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'>";
+      html += "<style>body{font-family:Arial;padding:20px;background:#f0f0f0}";
+      html += ".card{background:white;padding:20px;border-radius:10px;margin:10px 0}</style></head><body>";
+      html += "<h1>🌍 Simulador Sísmico - Biela-Manivela</h1>";
+      html += "<div class='card'><strong>Device ID:</strong> " + String(DEVICE_ID) + "</div>";
+      html += "<div class='card'><strong>IP:</strong> " + WiFi.localIP().toString() + "</div>";
+      html += "<div class='card'><strong>Motor:</strong> " + String(motorEnabled ? "🟢 Girando" : "⚪ Detenido") + "</div>";
+      html += "<div class='card'><strong>Frecuencia:</strong> " + String(currentFrequency) + " Hz</div>";
+      html += "<div class='card'><strong>RPM:</strong> " + String(currentFrequency * 60) + "</div>";
+      html += "<div class='card'><strong>Pasos dados:</strong> " + String(totalSteps) + "</div>";
+      html += "<br><a href='/reset'>🔄 Resetear WiFi</a></body></html>";
+      server.send(200, "text/html", html);
+    }
+  });
+  
+  server.on("/scan", HTTP_GET, []() {
+    int n = WiFi.scanNetworks();
+    String json = "{\"networks\":[";
+    for (int i = 0; i < n; i++) {
+      if (i > 0) json += ",";
+      json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",";
+      json += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
+      json += "\"encryption\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false") + "}";
+    }
+    json += "]}";
+    WiFi.scanDelete();
+    server.send(200, "application/json", json);
+  });
+  
+  server.on("/save", HTTP_POST, []() {
+    preferences.begin("wifi", false);
+    preferences.putString("ssid", server.arg("ssid"));
+    preferences.putString("password", server.arg("password"));
+    preferences.end();
+    server.send(200, "text/html", "<h1>✅ Guardado! Reiniciando...</h1>");
+    delay(3000);
+    ESP.restart();
+  });
+  
+  server.on("/reset", HTTP_GET, []() {
+    preferences.begin("wifi", false);
+    preferences.clear();
+    preferences.end();
+    server.send(200, "text/html", "<h1>Reseteado</h1>");
+    delay(2000);
+    ESP.restart();
+  });
+}
+
+void loop() {
+  server.handleClient();
+  
+  if (!firebaseReady || isConfigMode) {
+    return;
+  }
+  
+  // Actualizar NTP
+  static unsigned long lastNTPUpdate = 0;
+  if (millis() - lastNTPUpdate > 60000) {
+    timeClient.update();
+    lastNTPUpdate = millis();
+  }
+  
+  // Leer comandos de Firebase
+  if (millis() - lastFirebaseRead > FIREBASE_READ_INTERVAL) {
+    readFirebaseCommands();
+    lastFirebaseRead = millis();
+  }
+  
+  // Actualizar estado en Firebase
+  if (millis() - lastFirebaseWrite > FIREBASE_WRITE_INTERVAL) {
+    updateFirebaseStatus();
+    lastFirebaseWrite = millis();
+  }
+  
+  // CONTROL DEL MOTOR: Rotación continua
+  if (motorEnabled) {
+    unsigned long currentMicros = micros();
+    if (currentMicros - lastStepTime >= stepDelayMicros) {
+      // Dar un paso
+      digitalWrite(STEP_PIN, HIGH);
+      delayMicroseconds(5);
+      digitalWrite(STEP_PIN, LOW);
+      lastStepTime = currentMicros;
+      totalSteps++;
+    }
+  }
+}
+
+void readFirebaseCommands() {
+  String commandPath = "/devices/" + String(DEVICE_ID) + "/commands";
+  
+  // Leer START/STOP
+  if (Firebase.RTDB.getBool(&fbdo, (commandPath + "/motorEnabled").c_str())) {
+    bool shouldRun = fbdo.boolData();
+    
+    if (shouldRun && !motorEnabled) {
+      motorEnabled = true;
+      digitalWrite(EN_PIN, LOW);
+      totalSteps = 0;
+      Serial.println("🟢 Motor INICIADO - Rotación continua");
+    } else if (!shouldRun && motorEnabled) {
+      motorEnabled = false;
+      digitalWrite(EN_PIN, HIGH);
+      Serial.println("🔴 Motor DETENIDO");
+      Serial.printf("📊 Total pasos: %lu (%.1f vueltas)\n", 
+                    totalSteps, (float)totalSteps / TOTAL_STEPS_PER_REV);
+    }
+  }
+  
+  // Leer frecuencia (Hz = revoluciones por segundo)
+  if (Firebase.RTDB.getFloat(&fbdo, (commandPath + "/frequency").c_str())) {
+    float newFreq = fbdo.floatData();
+    if (newFreq > 0 && newFreq <= 10 && newFreq != currentFrequency) {
+      currentFrequency = newFreq;
+      
+      // Calcular delay para conseguir la frecuencia deseada
+      // freq (Hz) = pasos_por_segundo / TOTAL_STEPS_PER_REV
+      // pasos_por_segundo = freq * TOTAL_STEPS_PER_REV
+      // delay (us) = 1,000,000 / pasos_por_segundo
+      
+      float stepsPerSecond = currentFrequency * TOTAL_STEPS_PER_REV;
+      stepDelayMicros = constrain(
+        (int)(1000000.0 / stepsPerSecond),
+        MIN_STEP_DELAY_US,
+        MAX_STEP_DELAY_US
+      );
+      
+      Serial.printf("🎚️  Frecuencia: %.2f Hz (%.0f RPM, delay: %d µs)\n", 
+                    currentFrequency, currentFrequency * 60, stepDelayMicros);
+    }
+  }
+  
+  // Amplitud no se usa en biela-manivela fija, pero se lee para compatibilidad
+  if (Firebase.RTDB.getInt(&fbdo, (commandPath + "/amplitude").c_str())) {
+    currentAmplitude = fbdo.intData();
+    // En biela-manivela, la amplitud es fija = 2 * radio de manivela
+    Serial.printf("ℹ️  Amplitud recibida: %d%% (fija por diseño mecánico)\n", currentAmplitude);
+  }
+}
+
+void updateFirebaseStatus() {
+  String statusPath = "/devices/" + String(DEVICE_ID) + "/status";
+  
+  FirebaseJson json;
+  json.set("isRunning", motorEnabled);
+  json.set("currentFrequency", currentFrequency);
+  json.set("currentRPM", currentFrequency * 60);
+  json.set("currentAmplitude", MAX_AMPLITUDE_MM);  // Amplitud real del mecanismo
+  json.set("lastSeen", (int)timeClient.getEpochTime());
+  json.set("online", true);
+  json.set("stepDelayUs", stepDelayMicros);
+  json.set("totalSteps", (int)totalSteps);
+  json.set("totalRevolutions", (float)totalSteps / TOTAL_STEPS_PER_REV);
+  
+  Firebase.RTDB.setJSON(&fbdo, statusPath.c_str(), &json);
+}
+
+String getConfigHTML() {
+  return R"rawliteral(
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Config WiFi - Simulador Sísmico</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.container{background:#fff;border-radius:20px;padding:40px;max-width:450px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)}h1{margin-bottom:10px;color:#667eea;font-size:24px}p{color:#666;margin-bottom:25px}button{width:100%;padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:12px;margin-bottom:15px;cursor:pointer;font-size:16px;font-weight:bold}button:hover{transform:translateY(-2px)}input{width:100%;padding:14px;border:2px solid #e0e0e0;border-radius:12px;margin-bottom:20px;font-size:14px}input:focus{outline:none;border-color:#667eea}.network-item{padding:14px;border:2px solid #e0e0e0;border-radius:12px;margin-bottom:10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}.network-item:hover{border-color:#667eea;background:#f8f9ff}#nets{max-height:300px;overflow-y:auto;margin-bottom:20px}</style>
+</head><body>
+<div class="container">
+<h1>🌍 Simulador Sísmico</h1>
+<p>Mecanismo Biela-Manivela</p>
+<button onclick="scan()">📡 Escanear Redes</button>
+<div id="nets"></div>
+<form action="/save" method="POST">
+<input type="text" name="ssid" id="ssid" placeholder="Red WiFi" required>
+<input type="password" name="password" placeholder="Contraseña">
+<button type="submit">💾 Guardar y Conectar</button>
+</form>
+</div>
+<script>
+function scan(){
+  document.getElementById('nets').innerHTML='<p style="text-align:center">Escaneando...</p>';
+  fetch('/scan').then(r=>r.json()).then(d=>{
+    let h='';
+    d.networks.forEach(n=>{
+      h+=`<div class="network-item" onclick="document.getElementById('ssid').value='${n.ssid}'">
+        <strong>${n.ssid}</strong><span>${n.encryption?'🔒':''}</span></div>`;
+    });
+    document.getElementById('nets').innerHTML=h;
+  });
+}
+window.onload=()=>setTimeout(scan,500);
+</script>
+</body></html>
+  )rawliteral";
+}
