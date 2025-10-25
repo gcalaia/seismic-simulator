@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Upload, Play, Pause, Square, Settings, TrendingUp, 
   Download, AlertCircle, Wifi, WifiOff, FileText,
-  Zap, Activity, Cloud, CloudOff
+  Zap, Activity, Cloud
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { database } from '../lib/firebase';
-import { ref, set, onValue, get } from 'firebase/database';
+import { ref, set, onValue } from 'firebase/database';
 
 export default function Home() {
   const [seismicData, setSeismicData] = useState([]);
@@ -19,26 +19,102 @@ export default function Home() {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [loading, setLoading] = useState(false);
   
+  // Bandera para cancelar reproducción
+  const cancelPlayback = useRef(false);
+  
   const [manualParams, setManualParams] = useState({
     amplitude: 50,
     frequency: 2.0,
     duration: 10,
-    waveform: 'sine'
+    waveform: 'sine',
+    waveformType: 0 // Para sismos sintéticos
   });
 
   const [deviceId, setDeviceId] = useState('LAB_01');
-  const [deviceStatus, setDeviceStatus] = useState(null);
+   const [crankPosition, setCrankPosition] = useState(5); // Posición 1-5
+  
+  // Tabla de configuraciones mecánicas
+  const CRANK_CONFIG = {
+    1: { radius: 12, amplitude: 24, use: 'Pequeña', maxFreq: '3-5 Hz' },
+    2: { radius: 20, amplitude: 40, use: 'Media Baja', maxFreq: '2-4 Hz' },
+    3: { radius: 28, amplitude: 56, use: 'Media', maxFreq: '1-3 Hz' },
+    4: { radius: 36, amplitude: 72, use: 'Media Alta', maxFreq: '0.5-2 Hz' },
+    5: { radius: 44, amplitude: 88, use: 'Grande', maxFreq: '0.5-2 Hz' }
+  };
+  
+  // Obtener configuración actual
+  const currentConfig = CRANK_CONFIG[crankPosition];
+  
+  // Ejemplos de sismos reales
+  const EJEMPLOS_SISMOS = [
+    {
+      nombre: 'Terremoto de Japón 2011',
+      magnitud: 9.1,
+      archivo: '/ejemplos/sismo_japon_2011.csv',
+      descripcion: 'Tohoku, uno de los más potentes registrados',
+      posicionRecomendada: 5,
+      icon: '🇯🇵'
+    },
+    {
+      nombre: 'Terremoto de Chile 2010',
+      magnitud: 8.8,
+      archivo: '/ejemplos/sismo_chile_2010.csv',
+      descripcion: 'Maule, uno de los mayores en la historia de Chile',
+      posicionRecomendada: 5,
+      icon: '🇨🇱'
+    },
+    {
+      nombre: 'Terremoto de México 2017',
+      magnitud: 7.1,
+      archivo: '/ejemplos/sismo_mexico_2017.csv',
+      descripcion: 'Puebla-Morelos, altamente destructivo',
+      posicionRecomendada: 4,
+      icon: '🇲🇽'
+    },
+    {
+      nombre: 'Sismo de San Juan 1944',
+      magnitud: 7.0,
+      archivo: '/ejemplos/sismo_sanjuan_1944.csv',
+      descripcion: 'Histórico sismo argentino',
+      posicionRecomendada: 4,
+      icon: '🇦🇷'
+    },
+    {
+      nombre: 'Terremoto de Turquía 2023',
+      magnitud: 7.8,
+      archivo: '/ejemplos/sismo_turquia_2023.csv',
+      descripcion: 'Kahramanmaraş, devastador',
+      posicionRecomendada: 5,
+      icon: '🇹🇷'
+    }
+  ];
   const [firebaseConnected, setFirebaseConnected] = useState(false);
   
-  // Log de actividad
   const [activityLog, setActivityLog] = useState([]);
   const [showLog, setShowLog] = useState(true);
   const logRef = useRef(null);
-
   const fileInputRef = useRef(null);
+  
+  // Estados para monitor ESP32
+  const [esp32Logs, setEsp32Logs] = useState([]);
+  const lastMotorState = useRef(null); // Track last motor state
+  
+  const durationRef = useRef(0);
+  
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
 
-  // Función para agregar al log
-  const addLog = (message, type = 'info') => {
+  // Calcular datos visibles (ventana de 10 segundos alrededor del currentTime)
+  const visibleData = useMemo(() => {
+    const windowSize = 10; // segundos visibles
+    const startTime = Math.max(0, currentTime - windowSize / 2);
+    const endTime = Math.min(duration, currentTime + windowSize / 2);
+    
+    return seismicData.filter(point => point.time >= startTime && point.time <= endTime);
+  }, [seismicData, currentTime, duration]);
+
+  const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString('es-AR', { 
       hour: '2-digit', 
       minute: '2-digit', 
@@ -46,100 +122,347 @@ export default function Home() {
       fractionalSecondDigits: 3
     });
     
-    // Generar ID único combinando timestamp y random
     const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     
     setActivityLog(prev => [{
-      id: uniqueId, // ID único garantizado
+      id: uniqueId,
       timestamp,
       message,
-      type // 'info', 'success', 'error', 'command', 'response'
-    }, ...prev].slice(0, 100)); // Mantener últimos 100 mensajes
-  };
+      type
+    }, ...prev].slice(0, 100));
+  }, []);
 
-  // Escuchar cambios en Firebase
+  // NUEVO: Agregar log del ESP32
+  const addEsp32Log = useCallback((message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString('es-AR', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      fractionalSecondDigits: 3
+    });
+    
+    const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    
+    setEsp32Logs(prev => [{
+      id: uniqueId,
+      timestamp,
+      message,
+      type
+    }, ...prev].slice(0, 100));
+  }, []);
+
+  // Escuchar Firebase
   useEffect(() => {
+    if (!deviceId) return;
+    
     const deviceStatusRef = ref(database, `devices/${deviceId}/status`);
     
-    addLog(`Escuchando dispositivo: ${deviceId}`, 'info');
+    addLog(`Escuchando: ${deviceId}`, 'info');
     
     const unsubscribe = onValue(deviceStatusRef, (snapshot) => {
       if (snapshot.exists()) {
         const status = snapshot.val();
-        setDeviceStatus(status);
         setFirebaseConnected(true);
         
-        addLog(`✅ Respuesta ESP32: ${JSON.stringify({
-          isRunning: status.isRunning,
-          freq: status.currentFrequency,
-          amp: status.currentAmplitude
-        })}`, 'response');
-        
-        // Actualizar estado del motor
-        if (status.isRunning !== isPlaying) {
+        if (status.isRunning !== undefined) {
           setIsPlaying(status.isRunning);
-          addLog(`Motor: ${status.isRunning ? 'INICIADO' : 'DETENIDO'}`, status.isRunning ? 'success' : 'info');
         }
         
-        // Verificar si está online
+        if (status.progress !== undefined && status.progress >= 0 && status.progress <= 100) {
+          if (durationRef.current > 0) {
+            const newTime = (status.progress / 100) * durationRef.current;
+            setCurrentTime(newTime);
+          }
+        }
+        
         const now = Math.floor(Date.now() / 1000);
-        const isOnline = status.lastSeen && (now - status.lastSeen) < 10;
-        const newStatus = isOnline ? 'connected' : 'disconnected';
+        const isOnline = status.lastSeen && (now - status.lastSeen) < 15;
+        setConnectionStatus(isOnline ? 'connected' : 'disconnected');
         
-        if (connectionStatus !== newStatus) {
-          setConnectionStatus(newStatus);
-          addLog(`ESP32: ${isOnline ? 'Conectado' : 'Desconectado'}`, isOnline ? 'success' : 'error');
-        }
       } else {
         setFirebaseConnected(false);
         setConnectionStatus('disconnected');
-        addLog('❌ Dispositivo no encontrado en Firebase', 'error');
       }
     }, (error) => {
       console.error('Error Firebase:', error);
       setFirebaseConnected(false);
-      addLog(`❌ Error Firebase: ${error.message}`, 'error');
+      setConnectionStatus('disconnected');
     });
 
     return () => unsubscribe();
-  }, [deviceId]);
+  }, [deviceId, addLog]);
 
-  // Cargar archivo CSV
+  // NUEVO: Escuchar comandos y realtime del ESP32
+  useEffect(() => {
+    if (!deviceId) return;
+    
+    const commandsRef = ref(database, `devices/${deviceId}/commands`);
+    const statusRef = ref(database, `devices/${deviceId}/status`);
+    const realtimeRef = ref(database, `devices/${deviceId}/realtime`);
+    
+    // Listener de comandos
+    const unsubscribeCommands = onValue(commandsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const cmd = snapshot.val();
+        
+        // Log del comando principal
+        const actionEmoji = {
+          'START': '▶️',
+          'STOP': '⏹️',
+          'PAUSE': '⏸️',
+          'READY': '🟢'
+        }[cmd.action] || '📥';
+        
+        addEsp32Log(`${actionEmoji} ${cmd.action}`, 'command');
+        
+        // Logs de parámetros (solo si existen)
+        if (cmd.amplitude !== undefined && cmd.amplitude > 0) {
+          addEsp32Log(`📊 Amplitud: ${cmd.amplitude}mm`, 'data');
+        }
+        if (cmd.frequency !== undefined && cmd.frequency > 0) {
+          addEsp32Log(`🔊 Frecuencia: ${cmd.frequency}Hz`, 'data');
+        }
+        if (cmd.duration !== undefined && cmd.duration > 0) {
+          addEsp32Log(`⏱️ Duración: ${cmd.duration}s`, 'data');
+        }
+        if (cmd.waveformType !== undefined) {
+          const waveforms = {
+            0: 'Senoidal',
+            1: 'Onda P',
+            2: 'Onda S',
+            3: 'Sismo Completo',
+            4: 'Con Réplicas',
+            5: 'Cercano',
+            6: 'Lejano'
+          };
+          addEsp32Log(`🌊 Tipo: ${waveforms[cmd.waveformType] || 'Desconocido'}`, 'data');
+        }
+      }
+    });
+    
+    // Listener de estado
+    const unsubscribeStatus = onValue(statusRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const status = snapshot.val();
+        
+        // Log cuando cambia el estado (NO repetir constantemente)
+        if (status.isRunning !== undefined && status.isRunning !== lastMotorState.current) {
+          lastMotorState.current = status.isRunning;
+          const stateMsg = status.isRunning ? '🟢 Motor: ACTIVO' : '🔴 Motor: PARADO';
+          addEsp32Log(stateMsg, status.isRunning ? 'success' : 'info');
+        }
+        
+        // Log de progreso (solo en hitos importantes)
+        if (status.progress !== undefined) {
+          const prog = Math.round(status.progress);
+          if ([25, 50, 75].includes(prog)) {
+            addEsp32Log(`📊 Progreso: ${prog}%`, 'info');
+          }
+        }
+      }
+    });
+    
+    // Listener de datos en tiempo real (limitado para no saturar)
+    let lastRealtimeLog = 0;
+    let sampleCount = 0;
+    const unsubscribeRealtime = onValue(realtimeRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const now = Date.now();
+        sampleCount++;
+        
+        // Solo logear cada 3 segundos para evitar spam
+        if (now - lastRealtimeLog < 3000) return;
+        lastRealtimeLog = now;
+        
+        const data = snapshot.val();
+        
+        // Mostrar tiempo y amplitud juntos si ambos existen
+        if (data.time !== undefined && data.amplitude !== undefined) {
+          const timeValue = data.time.toFixed(1);
+          const ampValue = data.amplitude.toFixed(2);
+          const ampEmoji = Math.abs(data.amplitude) > 10 ? '📈' : '📉';
+          addEsp32Log(`${ampEmoji} t=${timeValue}s | Amp=${ampValue}mm`, 'info');
+        } else if (data.amplitude !== undefined) {
+          const ampValue = data.amplitude.toFixed(2);
+          const ampEmoji = Math.abs(data.amplitude) > 10 ? '📈' : '📉';
+          addEsp32Log(`${ampEmoji} Amplitud: ${ampValue}mm`, 'info');
+        }
+      }
+    });
+    
+    return () => {
+      unsubscribeCommands();
+      unsubscribeStatus();
+      unsubscribeRealtime();
+    };
+  }, [deviceId, addEsp32Log]);
+
+
+  // ✅ Actualizar configuración mecánica en Firebase cuando cambia la posición
+  useEffect(() => {
+    if (!deviceId) return;
+    
+    const updateMechanicalConfig = async () => {
+      try {
+        const configRef = ref(database, `devices/${deviceId}/mechanicalConfig`);
+        await set(configRef, {
+          crankPosition: crankPosition,
+          crankRadius: currentConfig.radius,
+          maxAmplitude: currentConfig.amplitude,
+          recommendedUse: currentConfig.use,
+          maxFrequency: currentConfig.maxFreq,
+          mechanismType: 'crank-slider',
+          updatedAt: Date.now()
+        });
+        
+        console.log('✅ Config mecánica actualizada:', crankPosition);
+        addLog(`⚙️ Config: Pos ${crankPosition} (${currentConfig.amplitude}mm)`, 'info');
+      } catch (error) {
+        console.error('❌ Error actualizando config mecánica:', error);
+        addLog(`❌ Error config: ${error.message}`, 'error');
+      }
+    };
+    
+    updateMechanicalConfig();
+  }, [crankPosition, currentConfig, deviceId, addLog]);
+
+  // ✅ Inicializar configuración mecánica al cargar la app (una sola vez)
+  useEffect(() => {
+    if (!deviceId) return;
+    
+    const initMechanicalConfig = async () => {
+      try {
+        const configRef = ref(database, `devices/${deviceId}/mechanicalConfig`);
+        await set(configRef, {
+          crankPosition: crankPosition,
+          crankRadius: currentConfig.radius,
+          maxAmplitude: currentConfig.amplitude,
+          recommendedUse: currentConfig.use,
+          maxFrequency: currentConfig.maxFreq,
+          mechanismType: 'crank-slider',
+          updatedAt: Date.now()
+        });
+        
+        console.log('✅ Config mecánica inicializada al cargar:', {
+          position: crankPosition,
+          radius: currentConfig.radius,
+          amplitude: currentConfig.amplitude
+        });
+        addLog(`⚙️ Config inicial: Pos ${crankPosition} (${currentConfig.amplitude}mm)`, 'success');
+      } catch (error) {
+        console.error('❌ Error inicializando config mecánica:', error);
+        addLog(`❌ Error init config: ${error.message}`, 'error');
+      }
+    };
+    
+    // Ejecutar con un pequeño delay para asegurar que Firebase esté listo
+    const timer = setTimeout(() => {
+      initMechanicalConfig();
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []); // Array vacío = solo se ejecuta una vez al montar el componente
+
+
+  // Cargar CSV
+
+  // Cargar ejemplo de sismo real
+  const cargarEjemplo = async (ejemplo) => {
+    try {
+      addLog(`📂 Cargando: ${ejemplo.nombre}`, 'info');
+      setLoading(true);
+      
+      // Descargar el archivo
+      const response = await fetch(ejemplo.archivo);
+      
+      if (!response.ok) {
+        throw new Error(`Archivo no encontrado: ${ejemplo.archivo}`);
+      }
+      
+      const csvText = await response.text();
+      
+      // Parsear CSV
+      const lines = csvText.trim().split('\n');
+      const data = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const [time, amplitude] = line.split(',').map(val => parseFloat(val.trim()));
+        
+        if (!isNaN(time) && !isNaN(amplitude)) {
+          data.push({ time, amplitude });
+        }
+      }
+      
+      if (data.length === 0) {
+        throw new Error('No se encontraron datos válidos en el archivo');
+      }
+      
+      // Actualizar estado
+      setSeismicData(data);
+      setFileName(ejemplo.nombre);
+      setDuration(data[data.length - 1].time);
+      setCurrentTime(0);
+      
+      // Sugerir posición de biela
+      setCrankPosition(ejemplo.posicionRecomendada);
+      
+      addLog(`✅ ${ejemplo.nombre} cargado (${data.length} puntos)`, 'success');
+      addLog(`💡 Sugerencia: Usar posición ${ejemplo.posicionRecomendada}`, 'info');
+      addLog(`🌍 Magnitud: ${ejemplo.magnitud} - ${ejemplo.descripcion}`, 'info');
+      
+    } catch (error) {
+      console.error('Error cargando ejemplo:', error);
+      addLog(`❌ Error: ${error.message}`, 'error');
+      alert(`No se pudo cargar el ejemplo:\n${error.message}\n\nAsegúrate de tener los archivos CSV en la carpeta public/ejemplos/`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    addLog(`📂 Cargando archivo: ${file.name}`, 'info');
+    addLog(`📂 ${file.name}`, 'info');
     setLoading(true);
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      const text = e.target.result;
-      const lines = text.split('\n').filter(line => line.trim());
-      
-      const data = lines.slice(1).map((line, index) => {
-        const [time, amplitude] = line.split(',').map(val => parseFloat(val.trim()));
-        return {
-          time: time || index * 0.01,
-          amplitude: amplitude || 0
-        };
-      }).filter(point => !isNaN(point.amplitude));
 
-      setSeismicData(data);
-      setFileName(file.name);
-      setDuration(data.length > 0 ? data[data.length - 1].time : 0);
-      setCurrentTime(0);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('deviceId', deviceId);
+
+      const response = await fetch('/api/seismic/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSeismicData(result.data);
+        setFileName(result.fileName);
+        setDuration(result.metadata.duration);
+        setCurrentTime(0);
+        
+        addLog(`✅ ${result.data.length} puntos`, 'success');
+        alert(`✅ Cargado!\n${result.metadata.totalPoints} puntos\n${result.metadata.duration}s`);
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      addLog(`❌ ${error.message}`, 'error');
+      alert('Error: ' + error.message);
+    } finally {
       setLoading(false);
-      
-      addLog(`✅ Archivo cargado: ${data.length} muestras, ${(data[data.length - 1].time).toFixed(1)}s`, 'success');
-    };
-
-    reader.readAsText(file);
+    }
   };
 
-  // Generar onda manual
+  // Generar onda
   const generateManualWave = async () => {
-    addLog(`⚙️ Generando onda ${manualParams.waveform}: ${manualParams.amplitude}mm, ${manualParams.frequency}Hz, ${manualParams.duration}s`, 'info');
+    addLog(`⚙️ ${manualParams.waveform}`, 'info');
     setLoading(true);
     
     const points = [];
@@ -153,217 +476,363 @@ export default function Home() {
         case 'sine':
           amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * manualParams.frequency * t);
           break;
+          
         case 'square':
           amplitude = manualParams.amplitude * Math.sign(Math.sin(2 * Math.PI * manualParams.frequency * t));
           break;
+          
         case 'sawtooth':
           amplitude = manualParams.amplitude * (2 * (t * manualParams.frequency - Math.floor(t * manualParams.frequency + 0.5)));
           break;
+          
         case 'random':
           amplitude = manualParams.amplitude * (Math.random() * 2 - 1);
           break;
+          
         case 'chirp':
-          const instantFreq = manualParams.frequency * (1 + t / manualParams.duration);
-          amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * instantFreq * t);
+          const freq = manualParams.frequency * (1 + t / manualParams.duration);
+          amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * freq * t);
           break;
-        default:
-          amplitude = 0;
+          
+        // SISMOS SINTÉTICOS
+        case 'pwave': // Onda P (Primaria)
+          {
+            const freq = 8.0;
+            const decay = Math.exp(-t * 2.0);
+            amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * freq * t) * decay;
+          }
+          break;
+          
+        case 'swave': // Onda S (Secundaria)
+          {
+            const freq = 4.0;
+            const decay = Math.exp(-t * 1.0);
+            amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * freq * t) * decay;
+          }
+          break;
+          
+        case 'complete': // Sismo Completo (P+S+Surface)
+          {
+            if (t < 2.0) {
+              // P-Wave
+              const freq = 8.0;
+              const decay = Math.exp(-t * 2.0);
+              amplitude = manualParams.amplitude * 0.3 * Math.sin(2 * Math.PI * freq * t) * decay;
+            } else if (t < 6.0) {
+              // S-Wave
+              const t2 = t - 2.0;
+              const freq = 4.0;
+              const decay = Math.exp(-t2 * 1.0);
+              amplitude = manualParams.amplitude * 0.6 * Math.sin(2 * Math.PI * freq * t2) * decay;
+            } else if (t < 15.0) {
+              // Surface Wave
+              const t2 = t - 6.0;
+              const freq = 2.0;
+              const decay = Math.exp(-t2 * 0.5);
+              amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * freq * t2) * decay;
+            }
+          }
+          break;
+          
+        case 'aftershocks': // Con Réplicas
+          {
+            if (t < 15.0) {
+              // Sismo principal
+              if (t < 2.0) {
+                const freq = 8.0;
+                const decay = Math.exp(-t * 2.0);
+                amplitude = manualParams.amplitude * 0.3 * Math.sin(2 * Math.PI * freq * t) * decay;
+              } else if (t < 6.0) {
+                const t2 = t - 2.0;
+                const freq = 4.0;
+                const decay = Math.exp(-t2 * 1.0);
+                amplitude = manualParams.amplitude * 0.6 * Math.sin(2 * Math.PI * freq * t2) * decay;
+              } else {
+                const t2 = t - 6.0;
+                const freq = 2.0;
+                const decay = Math.exp(-t2 * 0.5);
+                amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * freq * t2) * decay;
+              }
+            } else if (t >= 20.0 && t < 30.0) {
+              // Réplica 1
+              const t2 = t - 20.0;
+              const freq = 5.0;
+              const decay = Math.exp(-t2 * 1.5);
+              amplitude = manualParams.amplitude * 0.4 * Math.sin(2 * Math.PI * freq * t2) * decay;
+            } else if (t >= 35.0 && t < 42.0) {
+              // Réplica 2
+              const t2 = t - 35.0;
+              const freq = 4.0;
+              const decay = Math.exp(-t2 * 2.0);
+              amplitude = manualParams.amplitude * 0.25 * Math.sin(2 * Math.PI * freq * t2) * decay;
+            }
+          }
+          break;
+          
+        case 'near': // Sismo Cercano (alta frecuencia)
+          {
+            const freq = 10.0;
+            const attack = Math.min(t * 5.0, 1.0);
+            const decay = Math.exp(-t * 1.5);
+            amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * freq * t) * attack * decay;
+          }
+          break;
+          
+        case 'far': // Sismo Lejano (baja frecuencia)
+          {
+            const freq = 1.5;
+            const attack = Math.min(t * 0.5, 1.0);
+            const decay = Math.exp(-t * 0.3);
+            amplitude = manualParams.amplitude * Math.sin(2 * Math.PI * freq * t) * attack * decay;
+          }
+          break;
       }
       
       points.push({
-        time: parseFloat(t.toFixed(3)),
+        time: parseFloat(t.toFixed(4)),
         amplitude: parseFloat(amplitude.toFixed(3))
       });
     }
     
     setSeismicData(points);
+    setFileName(`${manualParams.waveform}_${manualParams.frequency}Hz`);
     setDuration(manualParams.duration);
     setCurrentTime(0);
-    setFileName(`${manualParams.waveform}_${Date.now()}.csv`);
+    
     setLoading(false);
-    
-    addLog(`✅ Onda generada: ${points.length} puntos`, 'success');
+    addLog(`✅ ${points.length} puntos`, 'success');
   };
 
-  // Buscar dispositivo
-  const searchDevice = async () => {
-    addLog(`🔍 Buscando dispositivo: ${deviceId}`, 'info');
-    setLoading(true);
-    try {
-      const deviceRef = ref(database, `devices/${deviceId}`);
-      const snapshot = await get(deviceRef);
-      
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        addLog(`✅ Dispositivo encontrado: ${data.name}`, 'success');
-        addLog(`📊 Info: IP=${data.ip}, Micropasos=${data.microsteps || 'N/A'}`, 'info');
-        alert(`✅ Dispositivo encontrado: ${data.name}`);
-        setConnectionStatus('connected');
-      } else {
-        addLog('❌ Dispositivo no encontrado', 'error');
-        alert('❌ Dispositivo no encontrado.\nAsegúrate de que el ESP32 esté encendido y conectado a WiFi.');
-        setConnectionStatus('disconnected');
-      }
-    } catch (error) {
-      addLog(`❌ Error: ${error.message}`, 'error');
-      alert('Error al buscar dispositivo: ' + error.message);
-    } finally {
-      setLoading(false);
+  // NUEVO: Reproducir CSV en tiempo real
+  const playCSVRealtime = async () => {
+    if (seismicData.length === 0) {
+      alert('Primero carga un CSV');
+      return;
     }
+
+    addLog('🎬 Reproducción CSV en tiempo real', 'info');
+    setIsPlaying(true);
+    cancelPlayback.current = false; // Reset bandera
+
+    // Enviar comando inicial
+    await set(ref(database, `devices/${deviceId}/commands`), {
+      action: 'START',
+      frequency: 0,
+      amplitude: 0,
+      waveformType: 99, // Código especial para "modo remoto"
+      timestamp: Date.now()
+    });
+
+    // Enviar cada punto en tiempo real
+    let lastTime = 0;
+    for (let i = 0; i < seismicData.length; i++) {
+      // Verificar si se canceló
+      if (cancelPlayback.current) {
+        addLog('⏹️ Reproducción cancelada', 'info');
+        break;
+      }
+
+      const point = seismicData[i];
+      const delayMs = (point.time - lastTime) * 1000;
+
+      // Esperar el tiempo correcto
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+      // Verificar nuevamente después del delay
+      if (cancelPlayback.current) {
+        addLog('⏹️ Reproducción cancelada', 'info');
+        break;
+      }
+
+      // Enviar amplitud actual a Firebase
+      await set(ref(database, `devices/${deviceId}/realtime`), {
+        amplitude: point.amplitude,
+        time: point.time,
+        index: i,
+        total: seismicData.length
+      });
+
+      setCurrentTime(point.time);
+      lastTime = point.time;
+
+      // Log cada 100 puntos
+      if (i % 100 === 0) {
+        addLog(`📍 ${i}/${seismicData.length}`, 'info');
+      }
+    }
+
+    // Detener al finalizar (solo si no se canceló antes)
+    if (!cancelPlayback.current) {
+      await set(ref(database, `devices/${deviceId}/commands`), {
+        action: 'STOP',
+        timestamp: Date.now()
+      });
+      addLog('✅ Reproducción completada', 'success');
+    }
+
+    setIsPlaying(false);
   };
 
-  // Control de reproducción
-  useEffect(() => {
-    if (!isPlaying || seismicData.length === 0) return;
-
-    const interval = setInterval(() => {
-      setCurrentTime(prev => {
-        const next = prev + 0.01;
-        if (next >= duration) {
-          setIsPlaying(false);
-          handleStop();
-          return duration;
-        }
-        return next;
-      });
-    }, 10);
-
-    return () => clearInterval(interval);
-  }, [isPlaying, duration, seismicData.length]);
-
+  // Controles
   const handlePlay = async () => {
-    if (seismicData.length === 0) return;
+    if (seismicData.length === 0) {
+      alert('Primero genera una onda o carga un CSV');
+      return;
+    }
+
+    addLog('▶️ START', 'command');
     
-    const commandData = {
-      motorEnabled: true,
-      frequency: manualParams.frequency,
-      amplitude: manualParams.amplitude
-    };
-    
-    addLog(`🚀 Enviando comando START`, 'command');
-    addLog(`📤 Parámetros: freq=${commandData.frequency}Hz, amp=${commandData.amplitude}mm`, 'command');
-    
-    try {
-      await set(ref(database, `devices/${deviceId}/commands`), commandData);
-      
-      setIsPlaying(true);
-      addLog('✅ Comando enviado exitosamente', 'success');
-      console.log('✅ Comando enviado a Firebase');
-    } catch (error) {
-      console.error('Error:', error);
-      addLog(`❌ Error al enviar: ${error.message}`, 'error');
-      alert('Error al enviar comando: ' + error.message);
+    // Si es un CSV cargado, usar modo realtime
+    if (fileName.includes('.csv') || fileName.includes('.txt')) {
+      addLog('📊 Modo: Reproducción CSV', 'info');
+      playCSVRealtime();
+    } else {
+      // Si es generado, usar parámetros
+      addLog('⚙️ Modo: Generación local', 'info');
+      try {
+        await set(ref(database, `devices/${deviceId}/commands`), {
+          action: 'START',
+          frequency: manualParams.frequency,
+          amplitude: manualParams.amplitude,
+          duration: manualParams.duration,
+          waveformType: manualParams.waveformType,
+          crankPosition: crankPosition, // Enviar posición de biela
+          timestamp: Date.now()
+        });
+        addLog(`✅ ${manualParams.frequency}Hz, ${manualParams.amplitude}mm, ${manualParams.duration}s, Pos:${crankPosition}, Type:${manualParams.waveformType}`, 'success');
+      } catch (error) {
+        addLog(`❌ ${error.message}`, 'error');
+      }
     }
   };
 
   const handlePause = async () => {
-    addLog('⏸️ Pausando motor...', 'command');
+    addLog('⏸️ PAUSE', 'command');
+    
+    // Cancelar reproducción CSV
+    cancelPlayback.current = true;
     setIsPlaying(false);
+    
     try {
-      await set(ref(database, `devices/${deviceId}/commands/motorEnabled`), false);
-      addLog('✅ Motor pausado', 'success');
+      await set(ref(database, `devices/${deviceId}/commands`), {
+        action: 'PAUSE',
+        timestamp: Date.now()
+      });
+      addLog('✅ Enviado', 'success');
     } catch (error) {
-      addLog(`❌ Error al pausar: ${error.message}`, 'error');
-      console.error('Error al pausar:', error);
+      addLog(`❌ ${error.message}`, 'error');
     }
   };
 
   const handleStop = async () => {
-    addLog('🛑 Deteniendo motor...', 'command');
-    setIsPlaying(false);
+    addLog('🛑 STOP', 'command');
+    
+    // Cancelar reproducción CSV si está activa
+    cancelPlayback.current = true;
+    
     setCurrentTime(0);
+    setIsPlaying(false);
+    
     try {
-      await set(ref(database, `devices/${deviceId}/commands/motorEnabled`), false);
-      addLog('✅ Motor detenido', 'success');
+      // Enviar STOP
+      await set(ref(database, `devices/${deviceId}/commands`), {
+        action: 'STOP',
+        timestamp: Date.now()
+      });
+      
+      // LIMPIAR ESTADO EN FIREBASE
+      await set(ref(database, `devices/${deviceId}/status`), {
+        online: true,
+        isRunning: false,
+        progress: 0,
+        lastSeen: Math.floor(Date.now() / 1000)
+      });
+      
+      addLog('✅ STOP + Reset completo', 'success');
     } catch (error) {
-      addLog(`❌ Error al detener: ${error.message}`, 'error');
-      console.error('Error al detener:', error);
+      addLog(`❌ ${error.message}`, 'error');
     }
   };
 
   const handleDownload = () => {
-    if (seismicData.length === 0) return;
-    
-    addLog(`💾 Exportando ${fileName}`, 'info');
-    const csv = ['time,amplitude', ...seismicData.map(d => `${d.time},${d.amplitude}`)].join('\n');
+    const csv = 'time,amplitude\n' + seismicData.map(d => `${d.time},${d.amplitude}`).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileName || 'seismic_data.csv';
+    a.download = `${fileName || 'seismic'}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
-    addLog('✅ Archivo exportado', 'success');
+    addLog('✅ Exportado', 'success');
   };
 
-  const visibleData = seismicData.filter(d => 
-    d.time >= Math.max(0, currentTime - 5) && d.time <= Math.min(duration, currentTime + 5)
-  );
-
   const getCurrentAmplitude = () => {
-    const point = seismicData.find(d => Math.abs(d.time - currentTime) < 0.01);
+    if (seismicData.length === 0 || isNaN(currentTime)) return '0.00';
+    const validTime = Math.max(0, Math.min(currentTime, duration));
+    const point = seismicData.find(d => Math.abs(d.time - validTime) < 0.05);
     return point ? point.amplitude.toFixed(2) : '0.00';
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+      <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <header className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2 flex items-center gap-3">
-            <Activity className="w-8 h-8 md:w-10 md:h-10 text-blue-400" />
-            Simulador Sísmico
-          </h1>
-          <p className="text-gray-300 text-sm md:text-base">
-            Control remoto vía Firebase Cloud
-          </p>
-        </header>
-
-        {/* Status Bar */}
-        <div className="bg-slate-800/50 backdrop-blur rounded-lg p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              {connectionStatus === 'connected' ? (
-                <Wifi className="w-5 h-5 text-green-500" />
-              ) : (
-                <WifiOff className="w-5 h-5 text-red-500" />
-              )}
-              <span className="text-sm">
-                ESP32: {connectionStatus === 'connected' ? 'Conectado' : 'Desconectado'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {firebaseConnected ? (
-                <Cloud className="w-5 h-5 text-green-500" />
-              ) : (
-                <CloudOff className="w-5 h-5 text-red-500" />
-              )}
-              <span className="text-sm">
-                Firebase: {firebaseConnected ? 'Conectado' : 'Desconectado'}
-              </span>
-            </div>
-            {fileName && (
-              <div className="flex items-center gap-2 text-sm text-gray-300">
-                <FileText className="w-4 h-4" />
-                {fileName}
+        <div className="mb-8">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-slate-800/50 backdrop-blur rounded-lg p-6">
+            <div className="flex items-center gap-4">
+              {/* Logo UTN */}
+              <img 
+                src="/utn-logo.png" 
+                alt="UTN Logo" 
+                className="h-16 w-auto hidden md:block"
+                onError={(e) => {
+                  // Fallback si no encuentra la imagen
+                  e.target.style.display = 'none';
+                }}
+              />
+              <div>
+                <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">
+                  <Zap className="w-10 h-10 text-yellow-400" />
+                  Mesa Vibratoria Sísmica
+                </h1>
+                <p className="text-gray-300">Universidad Tecnológica Nacional - Control Remoto Cloud</p>
               </div>
-            )}
-          </div>
-          <div className="text-sm text-gray-300">
-            {seismicData.length} muestras
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                firebaseConnected ? 'bg-green-900/30 border border-green-500/50' : 'bg-red-900/30 border border-red-500/50'
+              }`}>
+                <Cloud className={`w-5 h-5 ${firebaseConnected ? 'text-green-400' : 'text-red-400'}`} />
+                <span className={`font-semibold ${firebaseConnected ? 'text-green-300' : 'text-red-300'}`}>
+                  Firebase: {firebaseConnected ? 'Conectado' : 'Desconectado'}
+                </span>
+              </div>
+              
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                connectionStatus === 'connected' ? 'bg-green-900/30 border border-green-500/50' : 'bg-orange-900/30 border border-orange-500/50'
+              }`}>
+                {connectionStatus === 'connected' ? 
+                  <Wifi className="w-5 h-5 text-green-400" /> : 
+                  <WifiOff className="w-5 h-5 text-orange-400" />
+                }
+                <span className={`font-semibold ${connectionStatus === 'connected' ? 'text-green-300' : 'text-orange-300'}`}>
+                  ESP32: {connectionStatus === 'connected' ? 'Online' : 'Offline'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Panel de Control */}
+          {/* Panel Izquierdo */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Carga de archivo */}
+            {/* Cargar CSV */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <Upload className="w-5 h-5" />
-                Cargar Sismo
+                Cargar Archivo
               </h2>
+              
               <input
                 ref={fileInputRef}
                 type="file"
@@ -371,48 +840,172 @@ export default function Home() {
                 onChange={handleFileUpload}
                 className="hidden"
               />
+              
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-3 rounded-lg transition flex items-center justify-center gap-2"
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-3 rounded-lg transition font-semibold flex items-center justify-center gap-2"
               >
-                <Upload className="w-4 h-4" />
-                {loading ? 'Cargando...' : 'Seleccionar CSV'}
+                <FileText className="w-5 h-5" />
+                {loading ? 'Procesando...' : 'Seleccionar CSV'}
               </button>
-              <p className="text-xs text-gray-400 mt-2">
-                Formato: tiempo,amplitud
-              </p>
+              
+              {fileName && (
+                <div className="mt-4 p-3 bg-green-900/20 border border-green-500/50 rounded-lg">
+                  <p className="text-sm text-green-300 break-all">
+                    <strong>{fileName}</strong>
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {seismicData.length} muestras • {duration.toFixed(1)}s
+                  </p>
+                </div>
+              )}
             </div>
 
-            {/* Parámetros Manuales */}
+            {/* Panel de Ejemplos de Sismos */}
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-blue-500/30">
+              <h2 className="text-lg font-semibold mb-4 flex items-center">
+                <FileText className="h-5 w-5 mr-2 text-blue-400" />
+                Ejemplos de Sismos Reales
+              </h2>
+              
+              <div className="space-y-3">
+                {EJEMPLOS_SISMOS.map((ejemplo, index) => (
+                  <button
+                    key={index}
+                    onClick={() => cargarEjemplo(ejemplo)}
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 
+                               text-white rounded-lg p-4 transition-all duration-200 
+                               disabled:opacity-50 disabled:cursor-not-allowed
+                               flex items-start space-x-3 text-left border border-blue-400/20 hover:border-blue-300/40"
+                  >
+                    <span className="text-3xl mt-1">{ejemplo.icon}</span>
+                    <div className="flex-1">
+                      <div className="font-semibold text-base mb-1">
+                        {ejemplo.nombre}
+                      </div>
+                      <div className="text-sm text-blue-200">
+                        {ejemplo.descripcion}
+                      </div>
+                      <div className="flex items-center space-x-3 mt-2 text-xs">
+                        <span className="bg-red-500/20 text-red-300 px-2 py-1 rounded font-mono">
+                          M {ejemplo.magnitud}
+                        </span>
+                        <span className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded">
+                          Pos. {ejemplo.posicionRecomendada}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              
+              <div className="mt-4 bg-blue-900/20 border border-blue-600/30 rounded-lg p-3">
+                <p className="text-xs text-blue-200 flex items-center">
+                  <span className="mr-2">💡</span>
+                  Los ejemplos incluyen datos de sismos históricos reales.
+                  Se recomienda usar la posición de biela sugerida para cada uno.
+                </p>
+              </div>
+            </div>
+
+            {/* Generador */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <Settings className="w-5 h-5" />
-                Parámetros Manuales
+                Generar Onda
               </h2>
               
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm text-gray-300 mb-1 block">
-                    Amplitud: {manualParams.amplitude}mm
-                  </label>
+                  <label className="block text-sm mb-2">Tipo</label>
+                  <select
+                    value={manualParams.waveform}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      let waveformType = 0;
+                      let recommendedDuration = manualParams.duration;
+                      
+                      // Mapear tipo de onda a código numérico y duración recomendada
+                      switch(value) {
+                        case 'sine': 
+                          waveformType = 0; 
+                          recommendedDuration = 10;
+                          break;
+                        case 'pwave': 
+                          waveformType = 1; 
+                          recommendedDuration = 5;
+                          break;
+                        case 'swave': 
+                          waveformType = 2;
+                          recommendedDuration = 8;
+                          break;
+                        case 'complete': 
+                          waveformType = 3;
+                          recommendedDuration = 15;
+                          break;
+                        case 'aftershocks': 
+                          waveformType = 4;
+                          recommendedDuration = 45;
+                          break;
+                        case 'near': 
+                          waveformType = 5;
+                          recommendedDuration = 10;
+                          break;
+                        case 'far': 
+                          waveformType = 6;
+                          recommendedDuration = 20;
+                          break;
+                        default: 
+                          waveformType = 0;
+                          recommendedDuration = 10;
+                      }
+                      
+                      setManualParams({
+                        ...manualParams, 
+                        waveform: value, 
+                        waveformType: waveformType,
+                        duration: recommendedDuration
+                      });
+                    }}
+                    className="w-full bg-slate-700 px-3 py-2 rounded-lg"
+                  >
+                    <optgroup label="Ondas Básicas">
+                      <option value="sine">🌊 Senoidal</option>
+                      <option value="square">⬜ Cuadrada</option>
+                      <option value="sawtooth">📐 Sierra</option>
+                      <option value="random">🎲 Aleatoria</option>
+                      <option value="chirp">📶 Chirp</option>
+                    </optgroup>
+                    <optgroup label="🌋 Sismos Sintéticos">
+                      <option value="pwave">⚡ Onda P (Primaria - 5s)</option>
+                      <option value="swave">〰️ Onda S (Secundaria - 8s)</option>
+                      <option value="complete">🌍 Sismo Completo (15s)</option>
+                      <option value="aftershocks">💥 Con Réplicas (45s)</option>
+                      <option value="near">📍 Sismo Cercano (10s)</option>
+                      <option value="far">🌏 Sismo Lejano (20s)</option>
+                    </optgroup>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm mb-2">Amplitud (mm): {manualParams.amplitude}</label>
                   <input
                     type="range"
-                    min="0"
+                    min="10"
                     max="100"
                     value={manualParams.amplitude}
                     onChange={(e) => setManualParams({...manualParams, amplitude: parseInt(e.target.value)})}
                     className="w-full"
                   />
                 </div>
-
+                
                 <div>
-                  <label className="text-sm text-gray-300 mb-1 block">
-                    Frecuencia: {manualParams.frequency}Hz
-                  </label>
+                  <label className="block text-sm mb-2">Frecuencia (Hz): {manualParams.frequency}</label>
                   <input
                     type="range"
-                    min="0.1"
+                    min="0.5"
                     max="10"
                     step="0.1"
                     value={manualParams.frequency}
@@ -420,86 +1013,122 @@ export default function Home() {
                     className="w-full"
                   />
                 </div>
-
+                
                 <div>
-                  <label className="text-sm text-gray-300 mb-1 block">
-                    Duración: {manualParams.duration}s
-                  </label>
+                  <label className="block text-sm mb-2">Duración (s): {manualParams.duration}</label>
                   <input
                     type="range"
-                    min="1"
+                    min="5"
                     max="60"
                     value={manualParams.duration}
                     onChange={(e) => setManualParams({...manualParams, duration: parseInt(e.target.value)})}
                     className="w-full"
                   />
                 </div>
-
-                <div>
-                  <label className="text-sm text-gray-300 mb-1 block">Forma de onda</label>
-                  <select
-                    value={manualParams.waveform}
-                    onChange={(e) => setManualParams({...manualParams, waveform: e.target.value})}
-                    className="w-full bg-slate-700 px-3 py-2 rounded border border-slate-600"
-                  >
-                    <option value="sine">Senoidal</option>
-                    <option value="square">Cuadrada</option>
-                    <option value="sawtooth">Diente de sierra</option>
-                    <option value="random">Aleatoria</option>
-                    <option value="chirp">Barrido (Chirp)</option>
-                  </select>
-                </div>
-
+                
                 <button
                   onClick={generateManualWave}
                   disabled={loading}
-                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 px-4 py-2 rounded-lg transition flex items-center justify-center gap-2"
+                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 px-4 py-3 rounded-lg transition font-semibold flex items-center justify-center gap-2"
                 >
-                  <Zap className="w-4 h-4" />
-                  {loading ? 'Generando...' : 'Generar Onda'}
+                  <TrendingUp className="w-5 h-5" />
+                  Generar
                 </button>
               </div>
             </div>
-
-            {/* Configuración Dispositivo */}
-            <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">🔥 Dispositivo</h2>
+{/* Panel de Configuración Mecánica */}
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-purple-500/30">
+              <h2 className="text-lg font-semibold mb-4 flex items-center">
+                <Settings className="h-5 w-5 mr-2 text-purple-400" />
+                Configuración Mecánica
+              </h2>
               
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Selector de posición */}
                 <div>
-                  <label className="text-sm text-gray-300 mb-1 block">ID del Dispositivo</label>
+                  <label className="block text-sm font-medium mb-2">
+                    Posición de la Biela: {crankPosition}
+                  </label>
                   <input
-                    type="text"
-                    value={deviceId}
-                    onChange={(e) => setDeviceId(e.target.value)}
-                    className="w-full bg-slate-700 px-3 py-2 rounded border border-slate-600 text-white"
-                    placeholder="LAB_01"
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    value={crankPosition}
+                    onChange={(e) => setCrankPosition(parseInt(e.target.value))}
+                    className="w-full accent-purple-500"
                   />
+                  <div className="flex justify-between text-xs text-purple-300 mt-1">
+                    <span>1</span>
+                    <span>2</span>
+                    <span>3</span>
+                    <span>4</span>
+                    <span>5</span>
+                  </div>
                 </div>
-                <button
-                  onClick={searchDevice}
-                  disabled={loading}
-                  className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-2 rounded-lg transition flex items-center justify-center gap-2"
-                >
-                  <TrendingUp className="w-4 h-4" />
-                  {loading ? 'Buscando...' : 'Buscar Dispositivo'}
-                </button>
-                
-                {deviceStatus && (
-                  <div className="mt-4 p-3 bg-blue-900/30 border border-blue-500/50 rounded-lg text-xs">
-                    <p><strong>Frecuencia:</strong> {deviceStatus.currentFrequency || 0}Hz</p>
-                    <p><strong>Amplitud:</strong> {deviceStatus.currentAmplitude || 0}mm</p>
+
+                {/* Información de la configuración actual */}
+                <div className="bg-slate-900/50 rounded-lg p-4 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-purple-300">Radio manivela:</span>
+                    <span className="font-mono font-bold text-white">{currentConfig.radius} mm</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-300">Amplitud máxima:</span>
+                    <span className="font-mono font-bold text-green-400">{currentConfig.amplitude} mm</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-300">Uso recomendado:</span>
+                    <span className="font-medium text-blue-400">{currentConfig.use}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-300">Freq. máx. recom.:</span>
+                    <span className="font-medium text-yellow-400">{currentConfig.maxFreq}</span>
+                  </div>
+                </div>
+
+                {/* Advertencia si frecuencia es muy alta */}
+                {manualParams.frequency > 3 && crankPosition >= 4 && (
+                  <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-3 flex items-start space-x-2">
+                    <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-yellow-200">
+                      <p className="font-semibold">⚠️ Advertencia</p>
+                      <p>Frecuencia alta para posición {crankPosition}. Reduce a {currentConfig.maxFreq} para mejor rendimiento.</p>
+                    </div>
                   </div>
                 )}
+
+                {/* Info del mecanismo */}
+                <div className="bg-blue-900/20 border border-blue-600/30 rounded-lg p-3">
+                  <p className="text-xs text-blue-200 flex items-center">
+                    <span className="mr-2">ℹ️</span>
+                    Sistema biela-manivela: movimiento circular convertido a lineal sinusoidal
+                  </p>
+                </div>
               </div>
+            </div>
+
+            {/* Device ID */}
+            <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">ID Dispositivo</h2>
+              <input
+                type="text"
+                value={deviceId}
+                onChange={(e) => setDeviceId(e.target.value)}
+                className="w-full bg-slate-700 px-3 py-2 rounded-lg"
+                placeholder="LAB_01"
+              />
             </div>
           </div>
 
-          {/* Panel de Visualización */}
+          {/* Panel Derecho */}
           <div className="lg:col-span-2 space-y-6">
             {/* Gráfico */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Visualización en Tiempo Real</h2>
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Activity className="w-5 h-5" />
+                Visualización en Tiempo Real
+              </h2>
               
               {seismicData.length > 0 ? (
                 <div className="space-y-4">
@@ -525,6 +1154,7 @@ export default function Home() {
                         formatter={(value) => [value.toFixed(2) + 'mm', 'Amplitud']}
                         labelFormatter={(value) => 'Tiempo: ' + value.toFixed(2) + 's'}
                       />
+                      {/* LÍNEA ROJA DE PROGRESO */}
                       <ReferenceLine 
                         x={currentTime} 
                         stroke="#ef4444" 
@@ -543,11 +1173,13 @@ export default function Home() {
                     </LineChart>
                   </ResponsiveContainer>
 
-                  {/* Información actual */}
+                  {/* Métricas */}
                   <div className="grid grid-cols-3 gap-4">
                     <div className="bg-slate-700/50 p-4 rounded-lg">
                       <div className="text-sm text-gray-400">Tiempo</div>
-                      <div className="text-2xl font-bold">{currentTime.toFixed(2)}s</div>
+                      <div className="text-2xl font-bold">
+                        {currentTime.toFixed(2)}s
+                      </div>
                     </div>
                     <div className="bg-slate-700/50 p-4 rounded-lg">
                       <div className="text-sm text-gray-400">Amplitud</div>
@@ -558,8 +1190,17 @@ export default function Home() {
                       <div className="text-2xl font-bold">{duration.toFixed(1)}s</div>
                     </div>
                   </div>
-
-                  {/* Barra de progreso */}
+<div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-purple-500/30">
+                  <p className="text-sm text-purple-300 mb-1">Posición biela</p>
+                  <p className="text-2xl font-bold">{crankPosition}</p>
+                  <p className="text-xs text-purple-400 mt-1">Radio: {currentConfig.radius}mm</p>
+                </div>
+                <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-purple-500/30">
+                  <p className="text-sm text-purple-300 mb-1">Amplitud real</p>
+                  <p className="text-2xl font-bold">{currentConfig.amplitude}mm</p>
+                  <p className="text-xs text-purple-400 mt-1">Pico a pico</p>
+                </div>
+                  {/* Barra */}
                   <div className="space-y-2">
                     <input
                       type="range"
@@ -573,7 +1214,7 @@ export default function Home() {
                     />
                     <div className="flex justify-between text-xs text-gray-400">
                       <span>0s</span>
-                      <span>{(currentTime / duration * 100).toFixed(1)}%</span>
+                      <span>{duration > 0 ? ((currentTime / duration) * 100).toFixed(1) : 0}%</span>
                       <span>{duration.toFixed(1)}s</span>
                     </div>
                   </div>
@@ -582,16 +1223,15 @@ export default function Home() {
                 <div className="h-64 flex items-center justify-center text-gray-400">
                   <div className="text-center">
                     <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p>Carga un archivo CSV o genera una onda manual</p>
-                    <p className="text-sm mt-2">para comenzar la simulación</p>
+                    <p>Carga un archivo o genera una onda</p>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Controles de Reproducción */}
+            {/* Controles */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Controles de Simulación</h2>
+              <h2 className="text-xl font-semibold mb-4">Controles</h2>
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <button
@@ -632,62 +1272,125 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Información */}
-            <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 backdrop-blur rounded-lg p-6 border border-blue-500/20">
-              <h3 className="font-semibold mb-2 flex items-center gap-2">
-                <Cloud className="w-5 h-5" />
-                Sistema Cloud
-              </h3>
-              <p className="text-sm text-gray-300 mb-3">
-                Control remoto desde cualquier lugar del mundo vía Firebase. 
-                El ESP32 y la app se sincronizan en tiempo real a través de la nube.
-              </p>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className="bg-blue-500/20 px-3 py-1 rounded-full">Next.js 14</span>
-                <span className="bg-green-500/20 px-3 py-1 rounded-full">ESP32</span>
-                <span className="bg-orange-500/20 px-3 py-1 rounded-full">Firebase</span>
-                <span className="bg-purple-500/20 px-3 py-1 rounded-full">Vercel</span>
+            {/* NUEVO: Monitor ESP32 */}
+            <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6 mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-yellow-400" />
+                    Monitor ESP32
+                  </h2>
+                  {isPlaying && (
+                    <div className="flex items-center gap-2 px-2 py-1 bg-green-500/20 rounded-full">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="text-xs text-green-300 font-medium">EN VIVO</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEsp32Logs([])}
+                    className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded transition disabled:opacity-50"
+                    disabled={esp32Logs.length === 0}
+                  >
+                    🗑️ Limpiar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const text = esp32Logs.map(log => `[${log.timestamp}] ${log.message}`).join('\n');
+                      navigator.clipboard.writeText(text);
+                      addLog('📋 Logs copiados', 'success');
+                    }}
+                    className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded transition disabled:opacity-50"
+                    disabled={esp32Logs.length === 0}
+                  >
+                    📋 Copiar
+                  </button>
+                </div>
+              </div>
+              
+              {/* Estadísticas rápidas */}
+              {esp32Logs.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                  <div className="bg-slate-900/50 rounded p-2 text-center">
+                    <div className="text-xs text-slate-400">Total Logs</div>
+                    <div className="text-lg font-bold text-blue-400">{esp32Logs.length}</div>
+                  </div>
+                  <div className="bg-slate-900/50 rounded p-2 text-center">
+                    <div className="text-xs text-slate-400">Comandos</div>
+                    <div className="text-lg font-bold text-green-400">
+                      {esp32Logs.filter(l => l.type === 'command').length}
+                    </div>
+                  </div>
+                  <div className="bg-slate-900/50 rounded p-2 text-center">
+                    <div className="text-xs text-slate-400">Datos</div>
+                    <div className="text-lg font-bold text-cyan-400">
+                      {esp32Logs.filter(l => l.type === 'data').length}
+                    </div>
+                  </div>
+                  <div className="bg-slate-900/50 rounded p-2 text-center">
+                    <div className="text-xs text-slate-400">Errores</div>
+                    <div className="text-lg font-bold text-red-400">
+                      {esp32Logs.filter(l => l.type === 'error').length}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs h-64 overflow-y-auto">
+                {esp32Logs.length === 0 ? (
+                  <div className="text-slate-500 italic text-center py-8 flex flex-col items-center gap-2">
+                    <Activity className="w-8 h-8 opacity-50" />
+                    <p>Esperando datos del ESP32...</p>
+                    <p className="text-xs">Los comandos y datos aparecerán aquí</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {esp32Logs.map((log) => (
+                      <div 
+                        key={log.id}
+                        className={`${
+                          log.type === 'error' ? 'text-red-400' :
+                          log.type === 'success' ? 'text-green-400' :
+                          log.type === 'warning' ? 'text-yellow-400' :
+                          log.type === 'command' ? 'text-blue-400' :
+                          log.type === 'data' ? 'text-cyan-400' :
+                          'text-slate-300'
+                        }`}
+                      >
+                        <span className="text-slate-600">[{log.timestamp}]</span> {log.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <footer className="mt-8 text-center text-sm text-gray-400">
-          <p>Control remoto vía Firebase Cloud • {new Date().getFullYear()}</p>
-        </footer>
-        
-        {/* Panel de Log flotante */}
+        {/* Log */}
         <div className="fixed bottom-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)]">
           <div className="bg-slate-900/95 backdrop-blur-lg rounded-lg shadow-2xl border border-slate-700">
-            {/* Header del log */}
             <div 
               className="flex items-center justify-between p-3 border-b border-slate-700 cursor-pointer hover:bg-slate-800/50 transition"
               onClick={() => setShowLog(!showLog)}
             >
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-green-400" />
-                <span className="font-semibold text-sm">Log de Actividad</span>
+                <span className="font-semibold text-sm">Log</span>
                 <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full">
                   {activityLog.length}
                 </span>
               </div>
-              <button className="text-gray-400 hover:text-white transition">
-                {showLog ? '▼' : '▲'}
-              </button>
+              <button className="text-gray-400">{showLog ? '▼' : '▲'}</button>
             </div>
             
-            {/* Contenido del log */}
             {showLog && (
               <>
-                <div 
-                  ref={logRef}
-                  className="max-h-96 overflow-y-auto p-3 space-y-2 text-xs font-mono"
-                >
+                <div ref={logRef} className="max-h-96 overflow-y-auto p-3 space-y-2 text-xs font-mono">
                   {activityLog.length === 0 ? (
                     <div className="text-center text-gray-500 py-8">
-                      <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                      <p>Sin actividad aún</p>
+                      <p>Sin actividad</p>
                     </div>
                   ) : (
                     activityLog.map((log) => (
@@ -697,7 +1400,6 @@ export default function Home() {
                           log.type === 'error' ? 'bg-red-900/20 border-red-500 text-red-200' :
                           log.type === 'success' ? 'bg-green-900/20 border-green-500 text-green-200' :
                           log.type === 'command' ? 'bg-blue-900/20 border-blue-500 text-blue-200' :
-                          log.type === 'response' ? 'bg-purple-900/20 border-purple-500 text-purple-200' :
                           'bg-slate-800/50 border-slate-600 text-gray-300'
                         }`}
                       >
@@ -710,17 +1412,13 @@ export default function Home() {
                   )}
                 </div>
                 
-                {/* Controles del log */}
-                <div className="p-2 border-t border-slate-700 flex items-center justify-between">
+                <div className="p-2 border-t border-slate-700 flex justify-between">
                   <button
                     onClick={() => setActivityLog([])}
-                    className="text-xs text-gray-400 hover:text-white transition px-2 py-1 rounded hover:bg-slate-800"
+                    className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-slate-800"
                   >
                     🗑️ Limpiar
                   </button>
-                  <div className="text-xs text-gray-500">
-                    Últimos 100 eventos
-                  </div>
                 </div>
               </>
             )}

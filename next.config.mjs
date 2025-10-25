@@ -1,23 +1,23 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  env: {
-    ESP32_DEFAULT_IP: process.env.ESP32_DEFAULT_IP || '192.168.1.100',
-    ESP32_DEFAULT_PORT: process.env.ESP32_DEFAULT_PORT || '80',
+  // Configuración para manejar paquetes de Firebase correctamente
+  experimental: {
+    serverComponentsExternalPackages: ['firebase-admin'],
   },
-  async headers() {
-    return [
-      {
-        source: '/api/:path*',
-        headers: [
-          { key: 'Access-Control-Allow-Credentials', value: 'true' },
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'GET,POST,PUT,DELETE,OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
-        ],
-      },
-    ];
+  
+  webpack: (config, { isServer }) => {
+    // Excluir firebase-admin del bundle del cliente
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        'firebase-admin': false,
+        'firebase-admin/app': false,
+        'firebase-admin/database': false,
+      };
+    }
+    
+    return config;
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
