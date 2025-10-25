@@ -18,6 +18,7 @@ export default function Home() {
   const [duration, setDuration] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [loading, setLoading] = useState(false);
+  const [mostrarModalSismos, setMostrarModalSismos] = useState(false);
   
   // Bandera para cancelar reproducción
   const cancelPlayback = useRef(false);
@@ -45,12 +46,13 @@ export default function Home() {
   // Obtener configuración actual
   const currentConfig = CRANK_CONFIG[crankPosition];
   
-  // Ejemplos de sismos reales
+  
+  // Ejemplos de sismos reales - NOMBRES EXACTOS CON GUION BAJO
   const EJEMPLOS_SISMOS = [
     {
-      nombre: 'Terremoto de Japón 2011',
+      nombre: 'Terremoto de Japón (Tohoku) 2011',
       magnitud: 9.1,
-      archivo: '/ejemplos/sismo_japon_2011.csv',
+      archivo: '/ejemplos/Tohoku_2011_M9_1.csv',
       descripcion: 'Tohoku, uno de los más potentes registrados',
       posicionRecomendada: 5,
       icon: '🇯🇵'
@@ -58,7 +60,7 @@ export default function Home() {
     {
       nombre: 'Terremoto de Chile 2010',
       magnitud: 8.8,
-      archivo: '/ejemplos/sismo_chile_2010.csv',
+      archivo: '/ejemplos/Chile_2010_M8_8.csv',
       descripcion: 'Maule, uno de los mayores en la historia de Chile',
       posicionRecomendada: 5,
       icon: '🇨🇱'
@@ -66,54 +68,94 @@ export default function Home() {
     {
       nombre: 'Terremoto de México 2017',
       magnitud: 7.1,
-      archivo: '/ejemplos/sismo_mexico_2017.csv',
+      archivo: '/ejemplos/Mexico_2017_M7_1.csv',
       descripcion: 'Puebla-Morelos, altamente destructivo',
       posicionRecomendada: 4,
       icon: '🇲🇽'
     },
     {
-      nombre: 'Sismo de San Juan 1944',
-      magnitud: 7.0,
-      archivo: '/ejemplos/sismo_sanjuan_1944.csv',
-      descripcion: 'Histórico sismo argentino',
+      nombre: 'Terremoto de Chi-Chi 1999',
+      magnitud: 7.6,
+      archivo: '/ejemplos/Chi-Chi_1999_M7_6.csv',
+      descripcion: 'Taiwan, uno de los más grandes de Asia',
       posicionRecomendada: 4,
-      icon: '🇦🇷'
+      icon: '🇹🇼'
     },
     {
-      nombre: 'Terremoto de Turquía 2023',
-      magnitud: 7.8,
-      archivo: '/ejemplos/sismo_turquia_2023.csv',
-      descripcion: 'Kahramanmaraş, devastador',
-      posicionRecomendada: 5,
-      icon: '🇹🇷'
+      nombre: 'Terremoto de Christchurch 2011',
+      magnitud: 6.2,
+      archivo: '/ejemplos/Christchurch_2011_M6_2.csv',
+      descripcion: 'Nueva Zelanda, altamente destructivo',
+      posicionRecomendada: 3,
+      icon: '🇳🇿'
+    },
+    {
+      nombre: 'Terremoto de Kobe 1995',
+      magnitud: 6.9,
+      archivo: '/ejemplos/Kobe_1995_M6_9.csv',
+      descripcion: 'Gran terremoto de Hanshin-Awaji',
+      posicionRecomendada: 4,
+      icon: '🇯🇵'
+    },
+    {
+      nombre: 'Terremoto de Loma Prieta 1989',
+      magnitud: 6.9,
+      archivo: '/ejemplos/Loma_Prieta_1989_M6_9.csv',
+      descripcion: 'San Francisco, World Series earthquake',
+      posicionRecomendada: 4,
+      icon: '🇺🇸'
+    },
+    {
+      nombre: 'Terremoto de Northridge 1994',
+      magnitud: 6.7,
+      archivo: '/ejemplos/Northridge_1994_M6_7.csv',
+      descripcion: 'Los Angeles, uno de los más costosos de EEUU',
+      posicionRecomendada: 4,
+      icon: '🇺🇸'
+    },
+    {
+      nombre: 'Terremoto de San Fernando 1971',
+      magnitud: 6.6,
+      archivo: '/ejemplos/San_Fernando_1971_M6_6.csv',
+      descripcion: 'Sylmar earthquake, Los Angeles',
+      posicionRecomendada: 3,
+      icon: '🇺🇸'
+    },
+    {
+      nombre: 'Terremoto de Darfield 2010',
+      magnitud: 7.1,
+      archivo: '/ejemplos/Darfield_2010_M7_1.csv',
+      descripcion: 'Canterbury earthquake, Nueva Zelanda',
+      posicionRecomendada: 4,
+      icon: '🇳🇿'
     }
   ];
-  const [firebaseConnected, setFirebaseConnected] = useState(false);
   
+  const [firebaseConnected, setFirebaseConnected] = useState(false);
   const [activityLog, setActivityLog] = useState([]);
   const [showLog, setShowLog] = useState(true);
   const logRef = useRef(null);
   const fileInputRef = useRef(null);
-  
-  // Estados para monitor ESP32
   const [esp32Logs, setEsp32Logs] = useState([]);
-  const lastMotorState = useRef(null); // Track last motor state
-  
+  const lastMotorState = useRef(null);
   const durationRef = useRef(0);
   
   useEffect(() => {
     durationRef.current = duration;
   }, [duration]);
 
-  // Calcular datos visibles (ventana de 10 segundos alrededor del currentTime)
+  // Calcular datos visibles
   const visibleData = useMemo(() => {
-    const windowSize = 10; // segundos visibles
+    const windowSize = 10;
     const startTime = Math.max(0, currentTime - windowSize / 2);
     const endTime = Math.min(duration, currentTime + windowSize / 2);
     
-    return seismicData.filter(point => point.time >= startTime && point.time <= endTime);
+    return seismicData.filter(d => 
+      d.time >= startTime && d.time <= endTime
+    );
   }, [seismicData, currentTime, duration]);
 
+  // Agregar log simple
   const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString('es-AR', { 
       hour: '2-digit', 
@@ -121,18 +163,12 @@ export default function Home() {
       second: '2-digit',
       fractionalSecondDigits: 3
     });
+    const uniqueId = Date.now() + Math.random();
     
-    const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    
-    setActivityLog(prev => [{
-      id: uniqueId,
-      timestamp,
-      message,
-      type
-    }, ...prev].slice(0, 100));
+    setActivityLog(prev => [{ id: uniqueId, timestamp, message, type }, ...prev].slice(0, 100));
   }, []);
 
-  // NUEVO: Agregar log del ESP32
+  // Agregar log ESP32 simple
   const addEsp32Log = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString('es-AR', { 
       hour: '2-digit', 
@@ -140,20 +176,10 @@ export default function Home() {
       second: '2-digit',
       fractionalSecondDigits: 3
     });
+    const uniqueId = Date.now() + Math.random();
     
-    const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    
-    setEsp32Logs(prev => [{
-      id: uniqueId,
-      timestamp,
-      message,
-      type
-    }, ...prev].slice(0, 100));
+    setEsp32Logs(prev => [{ id: uniqueId, timestamp, message, type }, ...prev].slice(0, 100));
   }, []);
-
-  // Escuchar Firebase
-  useEffect(() => {
-    if (!deviceId) return;
     
     const deviceStatusRef = ref(database, `devices/${deviceId}/status`);
     
@@ -862,50 +888,29 @@ export default function Home() {
               )}
             </div>
 
-            {/* Panel de Ejemplos de Sismos */}
+
+            {/* Botón para abrir modal de ejemplos */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-blue-500/30">
               <h2 className="text-lg font-semibold mb-4 flex items-center">
                 <FileText className="h-5 w-5 mr-2 text-blue-400" />
                 Ejemplos de Sismos Reales
               </h2>
               
-              <div className="space-y-3">
-                {EJEMPLOS_SISMOS.map((ejemplo, index) => (
-                  <button
-                    key={index}
-                    onClick={() => cargarEjemplo(ejemplo)}
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 
-                               text-white rounded-lg p-4 transition-all duration-200 
-                               disabled:opacity-50 disabled:cursor-not-allowed
-                               flex items-start space-x-3 text-left border border-blue-400/20 hover:border-blue-300/40"
-                  >
-                    <span className="text-3xl mt-1">{ejemplo.icon}</span>
-                    <div className="flex-1">
-                      <div className="font-semibold text-base mb-1">
-                        {ejemplo.nombre}
-                      </div>
-                      <div className="text-sm text-blue-200">
-                        {ejemplo.descripcion}
-                      </div>
-                      <div className="flex items-center space-x-3 mt-2 text-xs">
-                        <span className="bg-red-500/20 text-red-300 px-2 py-1 rounded font-mono">
-                          M {ejemplo.magnitud}
-                        </span>
-                        <span className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded">
-                          Pos. {ejemplo.posicionRecomendada}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <button
+                onClick={() => setMostrarModalSismos(true)}
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 
+                           text-white rounded-lg p-4 transition-all duration-200 
+                           flex items-center justify-center space-x-3 border border-blue-400/20 hover:border-blue-300/40 group"
+              >
+                <FileText className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                <span className="text-lg font-semibold">Ver Sismos Históricos</span>
+                <span className="bg-white/20 px-2 py-1 rounded text-sm">{EJEMPLOS_SISMOS.length}</span>
+              </button>
               
-              <div className="mt-4 bg-blue-900/20 border border-blue-600/30 rounded-lg p-3">
+              <div className="mt-3 bg-blue-900/20 border border-blue-600/30 rounded-lg p-3">
                 <p className="text-xs text-blue-200 flex items-center">
-                  <span className="mr-2">💡</span>
-                  Los ejemplos incluyen datos de sismos históricos reales.
-                  Se recomienda usar la posición de biela sugerida para cada uno.
+                  <span className="mr-2">🌍</span>
+                  Sismos históricos de Japón, Chile, México, EEUU, Nueva Zelanda y más.
                 </p>
               </div>
             </div>
@@ -1425,6 +1430,108 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Modal de Sismos */}
+      {mostrarModalSismos && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 rounded-2xl border-2 border-blue-500/50 max-w-4xl w-full max-h-[80vh] overflow-hidden shadow-2xl">
+            {/* Header del modal */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="bg-white/20 p-2 rounded-lg">
+                  <FileText className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Sismos Históricos</h2>
+                  <p className="text-blue-100 text-sm">{EJEMPLOS_SISMOS.length} eventos sísmicos disponibles</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setMostrarModalSismos(false)}
+                className="text-white/80 hover:text-white hover:bg-white/20 p-2 rounded-lg transition-all"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Contenido scrolleable */}
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {EJEMPLOS_SISMOS.map((ejemplo, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      cargarEjemplo(ejemplo);
+                      setMostrarModalSismos(false);
+                    }}
+                    disabled={loading}
+                    className="bg-slate-800/50 hover:bg-slate-700/70 border-2 border-slate-700 hover:border-blue-500 
+                               rounded-xl p-4 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+                               flex items-start space-x-4 text-left group"
+                  >
+                    {/* Icono */}
+                    <div className="text-4xl mt-1 group-hover:scale-110 transition-transform">
+                      {ejemplo.icon}
+                    </div>
+                    
+                    {/* Info */}
+                    <div className="flex-1">
+                      <div className="font-semibold text-white text-base mb-1 group-hover:text-blue-300 transition-colors">
+                        {ejemplo.nombre}
+                      </div>
+                      <div className="text-sm text-gray-400 mb-2">
+                        {ejemplo.descripcion}
+                      </div>
+                      <div className="flex items-center space-x-2 text-xs">
+                        <span className="bg-red-500/20 text-red-300 px-2 py-1 rounded-md font-mono font-bold border border-red-500/30">
+                          M {ejemplo.magnitud}
+                        </span>
+                        <span className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded-md border border-purple-500/30">
+                          Pos. {ejemplo.posicionRecomendada}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Flecha */}
+                    <div className="text-blue-400 group-hover:translate-x-1 transition-transform">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Info adicional */}
+              <div className="mt-6 bg-blue-900/20 border border-blue-600/30 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <span className="text-2xl">💡</span>
+                  <div className="flex-1 text-sm text-blue-200">
+                    <p className="font-semibold mb-1">Recomendaciones:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li>Usa la posición de biela sugerida para cada sismo</li>
+                      <li>Los sismos de mayor magnitud (M 8+) requieren posición 5</li>
+                      <li>Verifica que el motor esté calibrado antes de iniciar</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-800/50 p-4 flex justify-end border-t border-slate-700">
+              <button
+                onClick={() => setMostrarModalSismos(false)}
+                className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
