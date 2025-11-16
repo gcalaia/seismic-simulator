@@ -10,8 +10,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { database } from '../lib/firebase';
 import { ref, set, onValue } from 'firebase/database';
-import { ref, set, onValue } from 'firebase/database';
-import { calculateDominantFrequency } from '../utils/calculateDominantFrequency'; // 🆕 NUEVO
+import { calculateDominantFrequency } from './utils/calculateDominantFrequency';
 
 export default function Home() {
   const [seismicData, setSeismicData] = useState([]);
@@ -687,7 +686,7 @@ const handlePlay = async () => {
     let frequencyToUse = manualParams.frequency;
     let durationToUse = manualParams.duration;
     
-    // 🆕 NUEVO: SI ESTÁ EN MODO HISTÓRICO, USAR FRECUENCIA DOMINANTE
+    // 🆕 SI ESTÁ EN MODO HISTÓRICO, USAR FRECUENCIA DOMINANTE
     if (isHistoricalMode && dominantFreqResult) {
       frequencyToUse = dominantFreqResult.frequency;
       durationToUse = dominantFreqResult.duration;
@@ -707,27 +706,6 @@ const handlePlay = async () => {
     });
     
     addLog(`✅ ${frequencyToUse.toFixed(2)}Hz, ${currentConfig.amplitude}mm, ${durationToUse}s`, 'success');
-      
-      // Clasificar tipo de suelo según período
-      let tipoSuelo = '';
-      if (periodoDominante < 0.4) tipoSuelo = 'Roca dura / Estructuras rígidas';
-      else if (periodoDominante < 0.8) tipoSuelo = 'Suelo firme / Edificios medios';
-      else tipoSuelo = 'Suelo blando / Edificios altos';
-      
-      addLog(`   Tipo de respuesta: ${tipoSuelo}`, 'info');
-    }
-    
-    await set(ref(database, `devices/${deviceId}/commands`), {
-      action: 'START',
-      frequency: frequencyToUse,
-      amplitude: currentConfig.amplitude,
-      duration: durationToUse,
-      waveformType: manualParams.waveformType,
-      crankPosition: crankPosition,
-      timestamp: Date.now()
-    });
-    
-    addLog(`✅ ${modoDescripcion}: ${frequencyToUse.toFixed(2)}Hz, ${currentConfig.amplitude}mm, ${durationToUse}s`, 'success');
     
   } catch (error) {
     addLog(`❌ ${error.message}`, 'error');
@@ -1081,13 +1059,8 @@ const clearHistoricalMode = () => {
                       });
                     }}
                     className="w-full bg-slate-700 px-3 py-2 rounded-lg"
-                  >
-                    <select
-  value={manualParams.waveform}
-  onChange={(e) => { ... }}
-  className="w-full bg-slate-700 px-3 py-2 rounded-lg"
-  disabled={isHistoricalMode} // 🆕 NUEVO
->
+                    disabled={isHistoricalMode}
+                    >
                     <optgroup label="Ondas Básicas">
                       <option value="sine">🌊 Senoidal</option>
                       <option value="square">⬜ Cuadrada</option>
