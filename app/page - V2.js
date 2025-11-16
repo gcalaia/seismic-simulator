@@ -10,8 +10,6 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { database } from '../lib/firebase';
 import { ref, set, onValue } from 'firebase/database';
-import { ref, set, onValue } from 'firebase/database';
-import { calculateDominantFrequency } from '../utils/calculateDominantFrequency'; // 🆕 NUEVO
 
 export default function Home() {
   const [seismicData, setSeismicData] = useState([]);
@@ -23,15 +21,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [mostrarModalSismos, setMostrarModalSismos] = useState(false);
   const [showWiFiModal, setShowWiFiModal] = useState(false);
-  const [isCSVLoaded, setIsCSVLoaded] = useState(false);
-  const [esp32IP, setEsp32IP] = useState('');
   
-  const [dominantFreqResult, setDominantFreqResult] = useState(null);
-  const [isHistoricalMode, setIsHistoricalMode] = useState(false)
   // Bandera para cancelar reproducción
   const cancelPlayback = useRef(false);
   
   const [manualParams, setManualParams] = useState({
+    amplitude: 50,
     frequency: 2.0,
     duration: 10,
     waveform: 'sine',
@@ -419,79 +414,55 @@ export default function Home() {
 
   // ✅ FUNCIÓN PARA CARGAR EJEMPLO DE SISMO
   const cargarEjemplo = async (ejemplo) => {
-  try {
-    addLog(`📂 Cargando: ${ejemplo.nombre}`, 'info');
-    setLoading(true);
-    
-    const response = await fetch(ejemplo.archivo);
-    
-    if (!response.ok) {
-      throw new Error(`Archivo no encontrado: ${ejemplo.archivo}`);
-    }
-    
-    const csvText = await response.text();
-    
-    const lines = csvText.trim().split('\n');
-    const data = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      
-      const [time, amplitude] = line.split(',').map(val => parseFloat(val.trim()));
-      
-      if (!isNaN(time) && !isNaN(amplitude)) {
-        data.push({ time, amplitude });
-      }
-    }
-    
-    if (data.length === 0) {
-      throw new Error('No se encontraron datos válidos en el archivo');
-    }
-    
-    // 🆕 NUEVO: CALCULAR FRECUENCIA DOMINANTE
     try {
-      const freqResult = calculateDominantFrequency(data);
-      setDominantFreqResult(freqResult);
-      setIsHistoricalMode(true);
+      addLog(`📂 Cargando: ${ejemplo.nombre}`, 'info');
+      setLoading(true);
       
-      // 🆕 NUEVO: ACTUALIZAR CONTROLES AUTOMÁTICAMENTE
-      setManualParams(prev => ({
-        ...prev,
-        frequency: freqResult.frequency,
-        duration: freqResult.duration
-      }));
+      const response = await fetch(ejemplo.archivo);
       
-      setCrankPosition(freqResult.recommendedPosition);
+      if (!response.ok) {
+        throw new Error(`Archivo no encontrado: ${ejemplo.archivo}`);
+      }
+      
+      const csvText = await response.text();
+      
+      const lines = csvText.trim().split('\n');
+      const data = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const [time, amplitude] = line.split(',').map(val => parseFloat(val.trim()));
+        
+        if (!isNaN(time) && !isNaN(amplitude)) {
+          data.push({ time, amplitude });
+        }
+      }
+      
+      if (data.length === 0) {
+        throw new Error('No se encontraron datos válidos en el archivo');
+      }
+      
+      setSeismicData(data);
+      setFileName(ejemplo.nombre);
+      setDuration(data[data.length - 1].time);
+      setCurrentTime(0);
+      
+      setCrankPosition(ejemplo.posicionRecomendada);
       
       addLog(`✅ ${ejemplo.nombre} cargado (${data.length} puntos)`, 'success');
-      addLog(`📊 Frecuencia dominante: ${freqResult.frequency.toFixed(2)} Hz`, 'info');
-      addLog(`📐 Período dominante: ${freqResult.period.toFixed(2)} s`, 'info');
-      addLog(`🏢 ${freqResult.vulnerableBuildings}`, 'info');
-      addLog(`⚙️ Posición biela: ${freqResult.recommendedPosition} (auto)`, 'success');
+      addLog(`💡 Sugerencia: Usar posición ${ejemplo.posicionRecomendada}`, 'info');
+      addLog(`🌍 Magnitud: ${ejemplo.magnitud} - ${ejemplo.descripcion}`, 'info');
       
-    } catch (calcError) {
-      console.warn('⚠️ No se pudo calcular frecuencia dominante:', calcError);
-      addLog(`⚠️ Frecuencia no calculada, usando default`, 'warning');
-      setDominantFreqResult(null);
-      setIsHistoricalMode(false);
-      setCrankPosition(ejemplo.posicionRecomendada);
+    } catch (error) {
+      console.error('Error cargando ejemplo:', error);
+      addLog(`❌ Error: ${error.message}`, 'error');
+      alert(`No se pudo cargar el ejemplo:\n${error.message}\n\nAsegúrate de tener los archivos CSV en la carpeta public/examples/`);
+    } finally {
+      setLoading(false);
     }
-    
-    setSeismicData(data);
-    setFileName(ejemplo.nombre);
-    setDuration(data[data.length - 1].time);
-    setCurrentTime(0);
-    setIsCSVLoaded(true);
-    
-  } catch (error) {
-    console.error('Error cargando ejemplo:', error);
-    addLog(`❌ Error: ${error.message}`, 'error');
-    alert(`No se pudo cargar el ejemplo:\n${error.message}\n\nAsegúrate de tener los archivos CSV en la carpeta public/examples/`);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -535,9 +506,7 @@ export default function Home() {
   const generateManualWave = async () => {
     addLog(`⚙️ ${manualParams.waveform}`, 'info');
     setLoading(true);
-    setIsHistoricalMode(false);
-    setDominantFreqResult(null);
-
+    
     const points = [];
     const samples = manualParams.duration * 100;
     
@@ -667,72 +636,101 @@ export default function Home() {
     setFileName(`${manualParams.waveform}_${manualParams.frequency}Hz`);
     setDuration(manualParams.duration);
     setCurrentTime(0);
-    setIsCSVLoaded(false);
-
+    
     setLoading(false);
     addLog(`✅ ${points.length} puntos generados con amplitud ${amplitudeToUse}mm`, 'success');
   };
 
-
-
-const handlePlay = async () => {
-  if (seismicData.length === 0) {
-    alert('Primero genera una onda o carga un CSV');
-    return;
-  }
-
-  addLog('▶️ START', 'command');
-  
-  try {
-    let frequencyToUse = manualParams.frequency;
-    let durationToUse = manualParams.duration;
-    
-    // 🆕 NUEVO: SI ESTÁ EN MODO HISTÓRICO, USAR FRECUENCIA DOMINANTE
-    if (isHistoricalMode && dominantFreqResult) {
-      frequencyToUse = dominantFreqResult.frequency;
-      durationToUse = dominantFreqResult.duration;
-      
-      addLog(`🌍 Modo sismo histórico activado`, 'info');
-      addLog(`📊 Usando frecuencia dominante: ${frequencyToUse.toFixed(2)} Hz`, 'info');
+  const playCSVRealtime = async () => {
+    if (seismicData.length === 0) {
+      alert('Primero carga un CSV');
+      return;
     }
-    
+
+    addLog('🎬 Reproducción CSV en tiempo real', 'info');
+    setIsPlaying(true);
+    cancelPlayback.current = false;
+
     await set(ref(database, `devices/${deviceId}/commands`), {
       action: 'START',
-      frequency: frequencyToUse,
-      amplitude: currentConfig.amplitude,
-      duration: durationToUse,
-      waveformType: manualParams.waveformType,
-      crankPosition: crankPosition,
+      frequency: 0,
+      amplitude: 0,
+      waveformType: 99,
       timestamp: Date.now()
     });
-    
-    addLog(`✅ ${frequencyToUse.toFixed(2)}Hz, ${currentConfig.amplitude}mm, ${durationToUse}s`, 'success');
-      
-      // Clasificar tipo de suelo según período
-      let tipoSuelo = '';
-      if (periodoDominante < 0.4) tipoSuelo = 'Roca dura / Estructuras rígidas';
-      else if (periodoDominante < 0.8) tipoSuelo = 'Suelo firme / Edificios medios';
-      else tipoSuelo = 'Suelo blando / Edificios altos';
-      
-      addLog(`   Tipo de respuesta: ${tipoSuelo}`, 'info');
+
+    let lastTime = 0;
+    for (let i = 0; i < seismicData.length; i++) {
+      if (cancelPlayback.current) {
+        addLog('⏹️ Reproducción cancelada', 'info');
+        break;
+      }
+
+      const point = seismicData[i];
+      const delayMs = (point.time - lastTime) * 1000;
+
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+      if (cancelPlayback.current) {
+        addLog('⏹️ Reproducción cancelada', 'info');
+        break;
+      }
+
+      await set(ref(database, `devices/${deviceId}/realtime`), {
+        amplitude: point.amplitude,
+        time: point.time,
+        index: i,
+        total: seismicData.length
+      });
+
+      setCurrentTime(point.time);
+      lastTime = point.time;
+
+      if (i % 100 === 0) {
+        addLog(`📍 ${i}/${seismicData.length}`, 'info');
+      }
     }
+
+    if (!cancelPlayback.current) {
+      await set(ref(database, `devices/${deviceId}/commands`), {
+        action: 'STOP',
+        timestamp: Date.now()
+      });
+      addLog('✅ Reproducción completada', 'success');
+    }
+
+    setIsPlaying(false);
+  };
+
+  const handlePlay = async () => {
+    if (seismicData.length === 0) {
+      alert('Primero genera una onda o carga un CSV');
+      return;
+    }
+
+    addLog('▶️ START', 'command');
     
-    await set(ref(database, `devices/${deviceId}/commands`), {
-      action: 'START',
-      frequency: frequencyToUse,
-      amplitude: currentConfig.amplitude,
-      duration: durationToUse,
-      waveformType: manualParams.waveformType,
-      crankPosition: crankPosition,
-      timestamp: Date.now()
-    });
-    
-    addLog(`✅ ${modoDescripcion}: ${frequencyToUse.toFixed(2)}Hz, ${currentConfig.amplitude}mm, ${durationToUse}s`, 'success');
-    
-  } catch (error) {
-    addLog(`❌ ${error.message}`, 'error');
-  }
-};
+    if (fileName.includes('.csv') || fileName.includes('.txt')) {
+      addLog('📊 Modo: Reproducción CSV', 'info');
+      playCSVRealtime();
+    } else {
+      addLog('⚙️ Modo: Generación local', 'info');
+      try {
+        await set(ref(database, `devices/${deviceId}/commands`), {
+          action: 'START',
+          frequency: manualParams.frequency,
+          amplitude: manualParams.amplitude,
+          duration: manualParams.duration,
+          waveformType: manualParams.waveformType,
+          crankPosition: crankPosition,
+          timestamp: Date.now()
+        });
+        addLog(`✅ ${manualParams.frequency}Hz, ${manualParams.amplitude}mm, ${manualParams.duration}s, Pos:${crankPosition}, Type:${manualParams.waveformType}`, 'success');
+      } catch (error) {
+        addLog(`❌ ${error.message}`, 'error');
+      }
+    }
+  };
 
   const handlePause = async () => {
     addLog('⏸️ PAUSE', 'command');
@@ -807,11 +805,6 @@ const handlePlay = async () => {
       alert('⚠️ No se puede conectar al dispositivo. IP no disponible.');
     }
   };
-const clearHistoricalMode = () => {
-  setIsHistoricalMode(false);
-  setDominantFreqResult(null);
-  addLog('🔓 Modo manual activado', 'info');
-};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -877,38 +870,6 @@ const clearHistoricalMode = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Panel Izquierdo */}
           <div className="lg:col-span-1 space-y-6">
-             {/* 🆕 NUEVO: BANNER DE MODO HISTÓRICO */}
-  {isHistoricalMode && dominantFreqResult && (
-    <div className="bg-blue-900/30 border-2 border-blue-500/50 rounded-lg p-4">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <h4 className="font-semibold text-blue-300 flex items-center text-sm">
-            <span className="mr-2">🌍</span>
-            Modo Sismo Histórico Activo
-          </h4>
-          <p className="text-xs text-blue-200 mt-1">
-            Los controles están configurados automáticamente
-          </p>
-        </div>
-        <button
-          onClick={clearHistoricalMode}
-          className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded transition-colors"
-        >
-          🔓 Desbloquear
-        </button>
-      </div>
-      <div className="text-xs text-blue-200 space-y-1 mt-2">
-        <div className="flex justify-between">
-          <span>Frecuencia:</span>
-          <span className="font-mono font-bold">{dominantFreqResult.frequency.toFixed(2)} Hz</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Posición biela:</span>
-          <span className="font-mono font-bold">{dominantFreqResult.recommendedPosition}</span>
-        </div>
-      </div>
-    </div>
-  )}
             {/* Cargar CSV */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -970,58 +931,7 @@ const clearHistoricalMode = () => {
                 </p>
               </div>
             </div>
-            {/* 🆕 NOTA EDUCATIVA MEJORADA */}
-{isHistoricalMode && dominantFreqResult && (
-  <div className="bg-gradient-to-br from-blue-50/10 to-indigo-50/10 border-2 border-blue-300/50 rounded-lg p-4">
-    <h4 className="font-semibold text-blue-300 mb-3 flex items-center text-sm">
-      <span className="mr-2">📚</span>
-      Nota Educativa - Frecuencia Dominante
-    </h4>
-    
-    {/* Información del cálculo */}
-    <div className="bg-white/5 rounded-lg p-3 mb-3">
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-400">Cruces por cero:</span>
-        <span className="font-mono text-blue-300">{dominantFreqResult.zeroCrossings}</span>
-      </div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-400">Duración registro:</span>
-        <span className="font-mono text-blue-300">{dominantFreqResult.duration.toFixed(1)}s</span>
-      </div>
-      <div className="border-t border-gray-600/30 pt-2 mt-2">
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-300 font-medium">Frecuencia dominante:</span>
-          <span className="font-mono font-bold text-indigo-400">
-            {dominantFreqResult.frequency.toFixed(2)} Hz
-          </span>
-        </div>
-        <div className="flex justify-between text-xs mt-1">
-          <span className="text-gray-300 font-medium">Período dominante:</span>
-          <span className="font-mono font-bold text-indigo-400">
-            {dominantFreqResult.period.toFixed(2)} s
-          </span>
-        </div>
-      </div>
-    </div>
 
-    {/* Estructuras vulnerables */}
-    <div className="bg-amber-900/20 border border-amber-600/30 rounded-lg p-2 mb-3">
-      <p className="text-xs text-amber-300">
-        <strong>🏢 Estructuras vulnerables:</strong><br/>
-        {dominantFreqResult.vulnerableBuildings}
-      </p>
-    </div>
-
-    {/* Limitación del sistema */}
-    <div className="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-2">
-      <p className="text-xs text-yellow-200">
-        <strong>⚠️ Limitación:</strong> Este sistema reproduce solo la <strong>frecuencia dominante</strong> mediante 
-        movimiento sinusoidal. Los sismos reales tienen un <strong>espectro de respuesta completo</strong> con 
-        múltiples frecuencias simultáneas que varían en el tiempo.
-      </p>
-    </div>
-  </div>
-)}
             {/* Generador - ⭐ SIN SLIDER DE AMPLITUD */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -1082,12 +992,6 @@ const clearHistoricalMode = () => {
                     }}
                     className="w-full bg-slate-700 px-3 py-2 rounded-lg"
                   >
-                    <select
-  value={manualParams.waveform}
-  onChange={(e) => { ... }}
-  className="w-full bg-slate-700 px-3 py-2 rounded-lg"
-  disabled={isHistoricalMode} // 🆕 NUEVO
->
                     <optgroup label="Ondas Básicas">
                       <option value="sine">🌊 Senoidal</option>
                       <option value="square">⬜ Cuadrada</option>
@@ -1132,36 +1036,28 @@ const clearHistoricalMode = () => {
                 </div>
                 
                 <div>
-                 <label className="block text-sm mb-2">
-  Frecuencia (Hz): {manualParams.frequency.toFixed(1)}
-  {isHistoricalMode && <span className="text-yellow-400 ml-2">🔒 Bloqueado</span>} {/* 🆕 NUEVO */}
-</label>
-<input
-  type="range"
-  min="0.5"
-  max="10"
-  step="0.1"
-  value={manualParams.frequency}
-  onChange={(e) => setManualParams({...manualParams, frequency: parseFloat(e.target.value)})}
-  className="w-full"
-  disabled={isHistoricalMode} // 🆕 NUEVO
-/>
+                  <label className="block text-sm mb-2">Frecuencia (Hz): {manualParams.frequency}</label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="10"
+                    step="0.1"
+                    value={manualParams.frequency}
+                    onChange={(e) => setManualParams({...manualParams, frequency: parseFloat(e.target.value)})}
+                    className="w-full"
+                  />
                 </div>
                 
                 <div>
-                  <label className="block text-sm mb-2">
-  Duración (s): {manualParams.duration}
-  {isHistoricalMode && <span className="text-yellow-400 ml-2">🔒 Bloqueado</span>} {/* 🆕 NUEVO */}
-</label>
-<input
-  type="range"
-  min="5"
-  max="60"
-  value={manualParams.duration}
-  onChange={(e) => setManualParams({...manualParams, duration: parseInt(e.target.value)})}
-  className="w-full"
-  disabled={isHistoricalMode} // 🆕 NUEVO
-/>
+                  <label className="block text-sm mb-2">Duración (s): {manualParams.duration}</label>
+                  <input
+                    type="range"
+                    min="5"
+                    max="60"
+                    value={manualParams.duration}
+                    onChange={(e) => setManualParams({...manualParams, duration: parseInt(e.target.value)})}
+                    className="w-full"
+                  />
                 </div>
                 
                 <button
@@ -1185,20 +1081,18 @@ const clearHistoricalMode = () => {
               
               <div className="space-y-4">
                 <div>
-                <label className="block text-sm font-medium mb-2">
-  Posición de la Biela: {crankPosition}
-  {isHistoricalMode && <span className="text-yellow-400 ml-2">🔒 Auto</span>} {/* 🆕 NUEVO */}
-</label>
-<input
-  type="range"
-  min="1"
-  max="5"
-  step="1"
-  value={crankPosition}
-  onChange={(e) => setCrankPosition(parseInt(e.target.value))}
-  className="w-full accent-purple-500"
-  disabled={isHistoricalMode} // 🆕 NUEVO
-/>
+                  <label className="block text-sm font-medium mb-2">
+                    Posición de la Biela: {crankPosition}
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    value={crankPosition}
+                    onChange={(e) => setCrankPosition(parseInt(e.target.value))}
+                    className="w-full accent-purple-500"
+                  />
                   <div className="flex justify-between text-xs text-purple-300 mt-1">
                     <span>1</span>
                     <span>2</span>
@@ -1227,7 +1121,7 @@ const clearHistoricalMode = () => {
                   </div>
                 </div>
 
-                {manualParams.frequency > 3 && crankPosition >= 4 && !isHistoricalMode && ( 
+                {manualParams.frequency > 3 && crankPosition >= 4 && (
                   <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-3 flex items-start space-x-2">
                     <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-yellow-200">

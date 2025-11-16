@@ -1,0 +1,74 @@
+🌐 PEER NGA Database - Acceso Completo
+🔗 Enlaces Principales:
+1. NGA-West2 (Sismos de corteza superficial)
+URL: https://ngawest2.berkeley.edu/
+Esta es la base de datos principal que incluye movimientos sísmicos de terremotos superficiales en regímenes tectónicos activos, con metadata completa sobre distancias, caracterización de sitios y datos de fuentes sísmicas Berkeley.
+2. NGA-East (América del Norte Central y Oriental)
+URL: http://peer.berkeley.edu/ngaeast/
+
+📋 Pasos para Acceder:
+1. Crear Cuenta (GRATIS)
+Los usuarios necesitan crear una cuenta en PEER NGA West 2 proporcionando credenciales (usuario y contraseña) Nheri-simcenter.
+
+Ve a: https://ngawest2.berkeley.edu/
+Haz clic en "Sign Up" o "Register"
+Completa el formulario de registro
+Confirma tu correo electrónico
+
+2. Iniciar Sesión
+
+Usa tus credenciales para acceder
+Acepta los términos de uso
+
+3. Buscar Sismos
+La herramienta permite buscar por:
+
+Magnitud (Magnitude)
+Distancia epicentral (Distance)
+Tipo de falla (Fault Type)
+Velocidad de onda de corte (Vs30)
+Evento específico (Earthquake Name)
+
+4. Seleccionar Registros
+
+Puedes ver metadata completa
+Filtrar por parámetros específicos
+Cada registro tiene un RSN (Record Sequence Number) único
+
+5. Descargar Datos
+Todos los registros descargados están sin escalar y tal como fueron registrados (sin rotación) Berkeley.
+Formatos disponibles:
+
+Aceleración (time series)
+Velocidad
+Desplazamiento
+Espectros de respuesta
+
+_____________________________________________________________________________________________________________________________________________
+
+🔍 Cómo Encontrar los Sismos de Tu Proyecto:
+Ejemplo: Chi-Chi 1999
+
+Inicia sesión en https://ngawest2.berkeley.edu/
+En "Search" selecciona:
+
+Earthquake Name: "Chi-Chi"
+Year: 1999
+Magnitude: 7.6
+
+
+Selecciona la estación específica
+Descarga el archivo en formato CSV o TXT
+
+______________________________________________________________________________________________________________________________________________
+
+📚 Documentación Oficial:
+Reporte Técnico Principal:
+
+PEER 2013/03 – PEER NGA-West2 Database
+Autores: Ancheta et al.
+Disponible en: http://apps.peer.berkeley.edu/publications/peer_reports/reports_2013/webPEER-2013-03-Ancheta.pdf
+
+
+📧 Contacto para Soporte:
+Para comentarios sobre las características del sitio web: peer_center@berkeley.edu
