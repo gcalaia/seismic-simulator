@@ -53,95 +53,106 @@ export default function Home() {
   
   // ✅ EJEMPLOS DE SISMOS CORREGIDOS - TODAS LAS RUTAS CON /examples/
   const EJEMPLOS_SISMOS = [
-    {
-      nombre: 'Terremoto de Japón (Tohoku) 2011',
-      magnitud: 9.1,
-      archivo: '/examples/Tohoku_2011_M9.1.csv',
-      descripcion: 'Tohoku, uno de los más potentes registrados',
-      posicionRecomendada: 5,
-      icon: '🇯🇵'
-    },
-    {
-      nombre: 'Terremoto de Chile 2010',
-      magnitud: 8.8,
-      archivo: '/examples/Chile_2010_M8.8.csv',
-      descripcion: 'Maule, uno de los mayores en la historia de Chile',
-      posicionRecomendada: 5,
-      icon: '🇨🇱'
-    },
-    {
-      nombre: 'Terremoto de México 2017',
-      magnitud: 7.1,
-      archivo: '/examples/Mexico_2017_M7.1.csv',
-      descripcion: 'Puebla-Morelos, altamente destructivo',
-      posicionRecomendada: 4,
-      icon: '🇲🇽'
-    },
-    {
-      nombre: 'Terremoto de Chi-Chi 1999',
-      magnitud: 7.6,
-      archivo: '/examples/Chi-Chi_1999_M7.6.csv',
-      descripcion: 'Taiwan, uno de los más grandes de Asia',
-      posicionRecomendada: 4,
-      icon: '🇹🇼'
-    },
-    {
-      nombre: 'Terremoto de Christchurch 2011',
-      magnitud: 6.2,
-      archivo: '/examples/Christchurch_2011_M6.2.csv',
-      descripcion: 'Nueva Zelanda, altamente destructivo',
-      posicionRecomendada: 3,
-      icon: '🇳🇿'
-    },
-    {
-      nombre: 'Terremoto de Kobe 1995',
-      magnitud: 6.9,
-      archivo: '/examples/Kobe_1995_M6.9.csv',
-      descripcion: 'Gran terremoto de Hanshin-Awaji',
-      posicionRecomendada: 4,
-      icon: '🇯🇵'
-    },
-    {
-      nombre: 'Terremoto de Loma Prieta 1989',
-      magnitud: 6.9,
-      archivo: '/examples/Loma_Prieta_1989_M6.9.csv',
-      descripcion: 'San Francisco, World Series earthquake',
-      posicionRecomendada: 4,
-      icon: '🇺🇸'
-    },
-    {
-      nombre: 'Terremoto de Northridge 1994',
-      magnitud: 6.7,
-      archivo: '/examples/Northridge_1994_M6.7.csv',
-      descripcion: 'Los Angeles, uno de los más costosos de EEUU',
-      posicionRecomendada: 4,
-      icon: '🇺🇸'
-    },
-    {
-      nombre: 'Terremoto de San Fernando 1971',
-      magnitud: 6.6,
-      archivo: '/examples/San_Fernando_1971_M6.6.csv',
-      descripcion: 'Sylmar earthquake, Los Angeles',
-      posicionRecomendada: 3,
-      icon: '🇺🇸'
-    },
-    {
-      nombre: 'Terremoto de Darfield 2010',
-      magnitud: 7.1,
-      archivo: '/examples/Darfield_2010_M7.1.csv',
-      descripcion: 'Canterbury earthquake, Nueva Zelanda',
-      posicionRecomendada: 4,
-      icon: '🇳🇿'
-    },
-    {
-      nombre: 'Terremoto de Pacoima 1971',
-      magnitud: 6.6,
-      archivo: '/examples/Pacoima_Dam.csv',
-      descripcion: 'San Fernando earthquake, Pacoima Dam',
-      posicionRecomendada: 3,
-      icon: '🇺🇸'
-    }
-  ];
+  {
+    nombre: 'Terremoto de Japón (Tohoku) 2011',
+    magnitud: 9.1,
+    pga: 20.5, // 🆕 Peak Ground Acceleration estimado
+    duracion: 60,
+    archivo: '/examples/Tohoku_2011_M9.1.csv',
+    descripcion: 'Tohoku, uno de los más potentes registrados',
+    icon: '🇯🇵'
+  },
+  {
+    nombre: 'Terremoto de Chile 2010',
+    magnitud: 8.8,
+    pga: 15.2,
+    duracion: 60,
+    archivo: '/examples/Chile_2010_M8.8.csv',
+    descripcion: 'Maule, uno de los mayores en la historia de Chile',
+    icon: '🇨🇱'
+  },
+  {
+    nombre: 'Terremoto de México 2017',
+    magnitud: 7.1,
+    pga: 12.8,
+    duracion: 45,
+    archivo: '/examples/Mexico_2017_M7.1.csv',
+    descripcion: 'Puebla-Morelos, altamente destructivo',
+    icon: '🇲🇽'
+  },
+  {
+    nombre: 'Terremoto de Chi-Chi 1999',
+    magnitud: 7.6,
+    pga: 14.5,
+    duracion: 50,
+    archivo: '/examples/Chi-Chi_1999_M7.6.csv',
+    descripcion: 'Taiwan, uno de los más grandes de Asia',
+    icon: '🇹🇼'
+  },
+  {
+    nombre: 'Terremoto de Christchurch 2011',
+    magnitud: 6.2,
+    pga: 14.2,
+    duracion: 30,
+    archivo: '/examples/Christchurch_2011_M6.2.csv',
+    descripcion: 'Nueva Zelanda, altamente destructivo',
+    icon: '🇳🇿'
+  },
+  {
+    nombre: 'Terremoto de Kobe 1995',
+    magnitud: 6.9,
+    pga: 8.2,
+    duracion: 35,
+    archivo: '/examples/Kobe_1995_M6.9.csv',
+    descripcion: 'Gran terremoto de Hanshin-Awaji',
+    icon: '🇯🇵'
+  },
+  {
+    nombre: 'Terremoto de Loma Prieta 1989',
+    magnitud: 6.9,
+    pga: 6.3,
+    duracion: 30,
+    archivo: '/examples/Loma_Prieta_1989_M6.9.csv',
+    descripcion: 'San Francisco, World Series earthquake',
+    icon: '🇺🇸'
+  },
+  {
+    nombre: 'Terremoto de Northridge 1994',
+    magnitud: 6.7,
+    pga: 8.5,
+    duracion: 32,
+    archivo: '/examples/Northridge_1994_M6.7.csv',
+    descripcion: 'Los Angeles, uno de los más costosos de EEUU',
+    icon: '🇺🇸'
+  },
+  {
+    nombre: 'Terremoto de San Fernando 1971',
+    magnitud: 6.6,
+    pga: 12.1,
+    duracion: 28,
+    archivo: '/examples/San_Fernando_1971_M6.6.csv',
+    descripcion: 'Sylmar earthquake, Los Angeles',
+    icon: '🇺🇸'
+  },
+  {
+    nombre: 'Terremoto de Darfield 2010',
+    magnitud: 7.1,
+    pga: 10.8,
+    duracion: 60,
+    archivo: '/examples/Darfield_2010_M7.1.csv',
+    descripcion: 'Canterbury earthquake, Nueva Zelanda',
+    icon: '🇳🇿'
+  },
+  {
+    nombre: 'Terremoto de Pacoima 1971',
+    magnitud: 6.6,
+    pga: 12.3,
+    duracion: 30,
+    archivo: '/examples/Pacoima_Dam.csv',
+    descripcion: 'San Fernando earthquake, Pacoima Dam',
+    icon: '🇺🇸'
+  }
+];
 
   const [firebaseConnected, setFirebaseConnected] = useState(false);
   const [activityLog, setActivityLog] = useState([]);
@@ -173,13 +184,29 @@ export default function Home() {
     durationRef.current = duration;
   }, [duration]);
 
-  const visibleData = useMemo(() => {
-    const windowSize = 10;
-    const startTime = Math.max(0, currentTime - windowSize / 2);
-    const endTime = Math.min(duration, currentTime + windowSize / 2);
-    
-    return seismicData.filter(point => point.time >= startTime && point.time <= endTime);
-  }, [seismicData, currentTime, duration]);
+ const visibleData = useMemo(() => {
+  // Cargar una ventana más amplia (20 segundos) para renderizado suave
+  const bufferSize = 20;
+  const startTime = Math.max(0, currentTime - bufferSize / 2);
+  const endTime = Math.min(duration, currentTime + bufferSize / 2);
+  
+  return seismicData.filter(point => point.time >= startTime && point.time <= endTime);
+}, [seismicData, currentTime, duration]);
+
+  const yAxisDomain = useMemo(() => {
+  if (seismicData.length === 0) return [-10, 10];
+  
+  const amplitudes = seismicData.map(d => d.amplitude);
+  const min = Math.min(...amplitudes);
+  const max = Math.max(...amplitudes);
+  
+  const padding = (max - min) * 0.1;
+  
+  return [
+    Math.floor(min - padding),
+    Math.ceil(max + padding)
+  ];
+}, [seismicData]);
 
   const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString('es-AR', { 
@@ -450,9 +477,19 @@ export default function Home() {
     
     // 🆕 NUEVO: CALCULAR FRECUENCIA DOMINANTE
     try {
-      const freqResult = calculateDominantFrequency(data);
-      setDominantFreqResult(freqResult);
-      setIsHistoricalMode(true);
+       console.log('📊 DATOS CARGADOS:', {
+    puntos: data.length,
+    primerPunto: data[0],
+    ultimoPunto: data[data.length - 1],
+    duracion: data[data.length - 1].time - data[0].time
+  });
+  
+  const freqResult = calculateDominantFrequency(data);
+  
+  console.log('✅ FRECUENCIA CALCULADA:', freqResult);
+  
+  setDominantFreqResult(freqResult);
+  setIsHistoricalMode(true);
       
       // 🆕 NUEVO: ACTUALIZAR CONTROLES AUTOMÁTICAMENTE
       setManualParams(prev => ({
@@ -791,6 +828,51 @@ const clearHistoricalMode = () => {
   addLog('🔓 Modo manual activado', 'info');
 };
 
+const estimateFrequencyFromMetadata = (pga, duracion) => {
+    let frequency;
+    
+    if (duracion > 50) {
+      if (pga > 15) {
+        frequency = 0.8;
+      } else if (pga > 10) {
+        frequency = 1.2;
+      } else {
+        frequency = 1.5;
+      }
+    } else if (duracion > 30) {
+      if (pga > 12) {
+        frequency = 1.2;
+      } else if (pga > 8) {
+        frequency = 1.5;
+      } else {
+        frequency = 1.8;
+      }
+    } else {
+      if (pga > 10) {
+        frequency = 1.5;
+      } else if (pga > 6) {
+        frequency = 2.0;
+      } else {
+        frequency = 2.5;
+      }
+    }
+    
+    frequency = Math.min(2.5, Math.max(0.5, frequency));
+    
+    let recommendedPosition;
+    if (frequency >= 2.5) {
+      recommendedPosition = 2;
+    } else if (frequency >= 1.8) {
+      recommendedPosition = 3;
+    } else if (frequency >= 1.2) {
+      recommendedPosition = 4;
+    } else {
+      recommendedPosition = 5;
+    }
+    
+    return { frequency, recommendedPosition };
+  };
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <div className="container mx-auto px-4 py-8">
@@ -1243,42 +1325,85 @@ const clearHistoricalMode = () => {
               
               {seismicData.length > 0 ? (
                 <div className="space-y-4">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={visibleData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis 
+                  <ResponsiveContainer width="100%" height={350}>
+                    <LineChart data={visibleData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+                      <defs>
+                        <linearGradient id="colorAmplitude" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                        </linearGradient>
+                      </defs>
+                      
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                      
+                     <XAxis 
                         dataKey="time" 
                         stroke="#9CA3AF"
-                        domain={[Math.max(0, currentTime - 5), Math.min(duration, currentTime + 5)]}
+                        domain={[
+                          Math.max(0, currentTime - 7.5),
+                          Math.min(duration, currentTime + 7.5)
+                        ]}
                         type="number"
                         label={{ value: 'Tiempo (s)', position: 'insideBottom', offset: -5 }}
                         tickFormatter={(value) => value.toFixed(1)}
+                        allowDataOverflow={true}
                       />
+                      
                       <YAxis 
                         stroke="#9CA3AF"
-                        domain={['auto', 'auto']}
+                        domain={(() => {
+                          if (seismicData.length === 0) return [-100, 100];
+                          
+                          const amps = seismicData.map(d => d.amplitude);
+                          const min = Math.min(...amps);
+                          const max = Math.max(...amps);
+                          const padding = Math.max(10, (max - min) * 0.15);
+                          
+                          return [
+                            Math.floor(min - padding),
+                            Math.ceil(max + padding)
+                          ];
+                        })()}
                         label={{ value: 'Amplitud (mm)', angle: -90, position: 'insideLeft' }}
+                        width={60}
                       />
+                      
                       <Tooltip 
-                        contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }}
-                        labelStyle={{ color: '#e5e7eb' }}
-                        formatter={(value) => [value.toFixed(2) + 'mm', 'Amplitud']}
+                        contentStyle={{ 
+                          backgroundColor: '#1e293b', 
+                          border: '1px solid #475569',
+                          borderRadius: '8px',
+                          padding: '8px'
+                        }}
+                        labelStyle={{ color: '#e5e7eb', fontWeight: 'bold' }}
+                        formatter={(value) => [value.toFixed(2) + ' mm', 'Amplitud']}
                         labelFormatter={(value) => 'Tiempo: ' + value.toFixed(2) + 's'}
                       />
+                      
                       <ReferenceLine 
                         x={currentTime} 
                         stroke="#ef4444" 
-                        strokeWidth={2} 
-                        label={{ value: 'Actual', position: 'top', fill: '#ef4444' }} 
+                        strokeWidth={3} 
+                        strokeDasharray="5 5"
+                        label={{ 
+                          value: `${currentTime.toFixed(1)}s`, 
+                          position: 'top', 
+                          fill: '#ef4444',
+                          fontSize: 14,
+                          fontWeight: 'bold'
+                        }} 
                       />
+                      
                       <Line 
                         type="monotone" 
                         dataKey="amplitude" 
                         stroke="#3b82f6" 
-                        strokeWidth={2}
+                        strokeWidth={2.5}
                         dot={false}
                         animationDuration={0}
                         isAnimationActive={false}
+                        fill="url(#colorAmplitude)"
+                        fillOpacity={0.3}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -1565,46 +1690,57 @@ const clearHistoricalMode = () => {
 
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {EJEMPLOS_SISMOS.map((ejemplo, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      cargarEjemplo(ejemplo);
-                      setMostrarModalSismos(false);
-                    }}
-                    disabled={loading}
-                    className="bg-slate-800/50 hover:bg-slate-700/70 border-2 border-slate-700 hover:border-blue-500 
-                               rounded-xl p-4 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-                               flex items-start space-x-4 text-left group"
-                  >
-                    <div className="text-4xl mt-1 group-hover:scale-110 transition-transform">
-                      {ejemplo.icon}
-                    </div>
-                    
-                    <div className="flex-1">
-                      <div className="font-semibold text-white text-base mb-1 group-hover:text-blue-300 transition-colors">
-                        {ejemplo.nombre}
+                {EJEMPLOS_SISMOS.map((ejemplo, index) => {
+                  // 🆕 CALCULAR frecuencia y posición ANTES de renderizar
+                  const { frequency, recommendedPosition } = estimateFrequencyFromMetadata(
+                    ejemplo.pga, 
+                    ejemplo.duracion
+                  );
+
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        cargarEjemplo(ejemplo);
+                        setMostrarModalSismos(false);
+                      }}
+                      disabled={loading}
+                      className="bg-slate-800/50 hover:bg-slate-700/70 border-2 border-slate-700 hover:border-blue-500 
+                                rounded-xl p-4 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+                                flex items-start space-x-4 text-left group"
+                    >
+                      <div className="text-4xl mt-1 group-hover:scale-110 transition-transform">
+                        {ejemplo.icon}
                       </div>
-                      <div className="text-sm text-gray-400 mb-2">
-                        {ejemplo.descripcion}
+                      
+                      <div className="flex-1">
+                        <div className="font-semibold text-white text-base mb-1 group-hover:text-blue-300 transition-colors">
+                          {ejemplo.nombre}
+                        </div>
+                        <div className="text-sm text-gray-400 mb-2">
+                          {ejemplo.descripcion}
+                        </div>
+                        <div className="flex items-center space-x-2 text-xs">
+                          <span className="bg-red-500/20 text-red-300 px-2 py-1 rounded-md font-mono font-bold border border-red-500/30">
+                            M {ejemplo.magnitud}
+                          </span>
+                          <span className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded-md border border-purple-500/30">
+                            Pos. {recommendedPosition}
+                          </span>
+                          <span className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md font-mono border border-blue-500/30">
+                            ~{frequency.toFixed(1)} Hz
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2 text-xs">
-                        <span className="bg-red-500/20 text-red-300 px-2 py-1 rounded-md font-mono font-bold border border-red-500/30">
-                          M {ejemplo.magnitud}
-                        </span>
-                        <span className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded-md border border-purple-500/30">
-                          Pos. {ejemplo.posicionRecomendada}
-                        </span>
+                      
+                      <div className="text-blue-400 group-hover:translate-x-1 transition-transform">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
                       </div>
-                    </div>
-                    
-                    <div className="text-blue-400 group-hover:translate-x-1 transition-transform">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="mt-6 bg-blue-900/20 border border-blue-600/30 rounded-lg p-4">
