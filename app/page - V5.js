@@ -10,7 +10,6 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { database } from '../lib/firebase';
 import { ref, set, onValue } from 'firebase/database';
-import { calculateDominantFrequency } from './utils/calculateDominantFrequency';
 
 export default function Home() {
   const [seismicData, setSeismicData] = useState([]);
@@ -24,16 +23,7 @@ export default function Home() {
   const [showWiFiModal, setShowWiFiModal] = useState(false);
   const [isCSVLoaded, setIsCSVLoaded] = useState(false);
   const [esp32IP, setEsp32IP] = useState('');
-  const [esp32Info, setEsp32Info] = useState({
-    ip: '',
-    rssi: 0,
-    ssid: '',
-    lastSeen: 0,
-    uptime: 0
-  });
 
-  const [dominantFreqResult, setDominantFreqResult] = useState(null);
-  const [isHistoricalMode, setIsHistoricalMode] = useState(false)
   // Bandera para cancelar reproducción
   const cancelPlayback = useRef(false);
   
@@ -60,110 +50,99 @@ export default function Home() {
   
   // ✅ EJEMPLOS DE SISMOS CORREGIDOS - TODAS LAS RUTAS CON /examples/
   const EJEMPLOS_SISMOS = [
-  {
-    nombre: 'Terremoto de Japón (Tohoku) 2011',
-    magnitud: 9.1,
-    pga: 20.5, // 🆕 Peak Ground Acceleration estimado
-    duracion: 60,
-    archivo: '/examples/Tohoku_2011_M9.1.csv',
-    descripcion: 'Tohoku, uno de los más potentes registrados',
-    icon: '🇯🇵'
-  },
-  {
-    nombre: 'Terremoto de Chile 2010',
-    magnitud: 8.8,
-    pga: 15.2,
-    duracion: 60,
-    archivo: '/examples/Chile_2010_M8.8.csv',
-    descripcion: 'Maule, uno de los mayores en la historia de Chile',
-    icon: '🇨🇱'
-  },
-  {
-    nombre: 'Terremoto de México 2017',
-    magnitud: 7.1,
-    pga: 12.8,
-    duracion: 45,
-    archivo: '/examples/Mexico_2017_M7.1.csv',
-    descripcion: 'Puebla-Morelos, altamente destructivo',
-    icon: '🇲🇽'
-  },
-  {
-    nombre: 'Terremoto de Chi-Chi 1999',
-    magnitud: 7.6,
-    pga: 14.5,
-    duracion: 50,
-    archivo: '/examples/Chi-Chi_1999_M7.6.csv',
-    descripcion: 'Taiwan, uno de los más grandes de Asia',
-    icon: '🇹🇼'
-  },
-  {
-    nombre: 'Terremoto de Christchurch 2011',
-    magnitud: 6.2,
-    pga: 14.2,
-    duracion: 30,
-    archivo: '/examples/Christchurch_2011_M6.2.csv',
-    descripcion: 'Nueva Zelanda, altamente destructivo',
-    icon: '🇳🇿'
-  },
-  {
-    nombre: 'Terremoto de Kobe 1995',
-    magnitud: 6.9,
-    pga: 8.2,
-    duracion: 35,
-    archivo: '/examples/Kobe_1995_M6.9.csv',
-    descripcion: 'Gran terremoto de Hanshin-Awaji',
-    icon: '🇯🇵'
-  },
-  {
-    nombre: 'Terremoto de Loma Prieta 1989',
-    magnitud: 6.9,
-    pga: 6.3,
-    duracion: 30,
-    archivo: '/examples/Loma_Prieta_1989_M6.9.csv',
-    descripcion: 'San Francisco, World Series earthquake',
-    icon: '🇺🇸'
-  },
-  {
-    nombre: 'Terremoto de Northridge 1994',
-    magnitud: 6.7,
-    pga: 8.5,
-    duracion: 32,
-    archivo: '/examples/Northridge_1994_M6.7.csv',
-    descripcion: 'Los Angeles, uno de los más costosos de EEUU',
-    icon: '🇺🇸'
-  },
-  {
-    nombre: 'Terremoto de San Fernando 1971',
-    magnitud: 6.6,
-    pga: 12.1,
-    duracion: 28,
-    archivo: '/examples/San_Fernando_1971_M6.6.csv',
-    descripcion: 'Sylmar earthquake, Los Angeles',
-    icon: '🇺🇸'
-  },
-  {
-    nombre: 'Terremoto de Darfield 2010',
-    magnitud: 7.1,
-    pga: 10.8,
-    duracion: 60,
-    archivo: '/examples/Darfield_2010_M7.1.csv',
-    descripcion: 'Canterbury earthquake, Nueva Zelanda',
-    icon: '🇳🇿'
-  },
-  {
-    nombre: 'Terremoto de Pacoima 1971',
-    magnitud: 6.6,
-    pga: 12.3,
-    duracion: 30,
-    archivo: '/examples/Pacoima_Dam.csv',
-    descripcion: 'San Fernando earthquake, Pacoima Dam',
-    icon: '🇺🇸'
-  }
-];
+    {
+      nombre: 'Terremoto de Japón (Tohoku) 2011',
+      magnitud: 9.1,
+      archivo: '/examples/Tohoku_2011_M9.1.csv',
+      descripcion: 'Tohoku, uno de los más potentes registrados',
+      posicionRecomendada: 5,
+      icon: '🇯🇵'
+    },
+    {
+      nombre: 'Terremoto de Chile 2010',
+      magnitud: 8.8,
+      archivo: '/examples/Chile_2010_M8.8.csv',
+      descripcion: 'Maule, uno de los mayores en la historia de Chile',
+      posicionRecomendada: 5,
+      icon: '🇨🇱'
+    },
+    {
+      nombre: 'Terremoto de México 2017',
+      magnitud: 7.1,
+      archivo: '/examples/Mexico_2017_M7.1.csv',
+      descripcion: 'Puebla-Morelos, altamente destructivo',
+      posicionRecomendada: 4,
+      icon: '🇲🇽'
+    },
+    {
+      nombre: 'Terremoto de Chi-Chi 1999',
+      magnitud: 7.6,
+      archivo: '/examples/Chi-Chi_1999_M7.6.csv',
+      descripcion: 'Taiwan, uno de los más grandes de Asia',
+      posicionRecomendada: 4,
+      icon: '🇹🇼'
+    },
+    {
+      nombre: 'Terremoto de Christchurch 2011',
+      magnitud: 6.2,
+      archivo: '/examples/Christchurch_2011_M6.2.csv',
+      descripcion: 'Nueva Zelanda, altamente destructivo',
+      posicionRecomendada: 3,
+      icon: '🇳🇿'
+    },
+    {
+      nombre: 'Terremoto de Kobe 1995',
+      magnitud: 6.9,
+      archivo: '/examples/Kobe_1995_M6.9.csv',
+      descripcion: 'Gran terremoto de Hanshin-Awaji',
+      posicionRecomendada: 4,
+      icon: '🇯🇵'
+    },
+    {
+      nombre: 'Terremoto de Loma Prieta 1989',
+      magnitud: 6.9,
+      archivo: '/examples/Loma_Prieta_1989_M6.9.csv',
+      descripcion: 'San Francisco, World Series earthquake',
+      posicionRecomendada: 4,
+      icon: '🇺🇸'
+    },
+    {
+      nombre: 'Terremoto de Northridge 1994',
+      magnitud: 6.7,
+      archivo: '/examples/Northridge_1994_M6.7.csv',
+      descripcion: 'Los Angeles, uno de los más costosos de EEUU',
+      posicionRecomendada: 4,
+      icon: '🇺🇸'
+    },
+    {
+      nombre: 'Terremoto de San Fernando 1971',
+      magnitud: 6.6,
+      archivo: '/examples/San_Fernando_1971_M6.6.csv',
+      descripcion: 'Sylmar earthquake, Los Angeles',
+      posicionRecomendada: 3,
+      icon: '🇺🇸'
+    },
+    {
+      nombre: 'Terremoto de Darfield 2010',
+      magnitud: 7.1,
+      archivo: '/examples/Darfield_2010_M7.1.csv',
+      descripcion: 'Canterbury earthquake, Nueva Zelanda',
+      posicionRecomendada: 4,
+      icon: '🇳🇿'
+    },
+    {
+      nombre: 'Terremoto de Pacoima 1971',
+      magnitud: 6.6,
+      archivo: '/examples/Pacoima_Dam.csv',
+      descripcion: 'San Fernando earthquake, Pacoima Dam',
+      posicionRecomendada: 3,
+      icon: '🇺🇸'
+    }
+  ];
 
   const [firebaseConnected, setFirebaseConnected] = useState(false);
   const [activityLog, setActivityLog] = useState([]);
-  const [showLog, setShowLog] = useState(false);
+  const [showLog, setShowLog] = useState(true);
   const [esp32Logs, setEsp32Logs] = useState([]);
   const lastMotorState = useRef(null);
   const logRef = useRef(null);
@@ -191,29 +170,13 @@ export default function Home() {
     durationRef.current = duration;
   }, [duration]);
 
- const visibleData = useMemo(() => {
-  // Cargar una ventana más amplia (20 segundos) para renderizado suave
-  const bufferSize = 20;
-  const startTime = Math.max(0, currentTime - bufferSize / 2);
-  const endTime = Math.min(duration, currentTime + bufferSize / 2);
-  
-  return seismicData.filter(point => point.time >= startTime && point.time <= endTime);
-}, [seismicData, currentTime, duration]);
-
-  const yAxisDomain = useMemo(() => {
-  if (seismicData.length === 0) return [-10, 10];
-  
-  const amplitudes = seismicData.map(d => d.amplitude);
-  const min = Math.min(...amplitudes);
-  const max = Math.max(...amplitudes);
-  
-  const padding = (max - min) * 0.1;
-  
-  return [
-    Math.floor(min - padding),
-    Math.ceil(max + padding)
-  ];
-}, [seismicData]);
+  const visibleData = useMemo(() => {
+    const windowSize = 10;
+    const startTime = Math.max(0, currentTime - windowSize / 2);
+    const endTime = Math.min(duration, currentTime + windowSize / 2);
+    
+    return seismicData.filter(point => point.time >= startTime && point.time <= endTime);
+  }, [seismicData, currentTime, duration]);
 
   const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString('es-AR', { 
@@ -387,33 +350,6 @@ export default function Home() {
     };
   }, [deviceId, addEsp32Log]);
 
-  // 🆕 ESCUCHAR INFO DE RED
-useEffect(() => {
-  if (!deviceId) return;
-  
-  const networkRef = ref(database, `devices/${deviceId}/network`);
-  
-  const unsubscribe = onValue(networkRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const networkData = snapshot.val();
-      setEsp32Info({
-        ip: networkData.ip || '',
-        rssi: networkData.rssi || 0,
-        ssid: networkData.ssid || '',
-        lastSeen: networkData.lastSeen || 0,
-        uptime: networkData.uptime || 0
-      });
-      setEsp32IP(networkData.ip || '');
-      
-      if (networkData.ip) {
-        addLog(`📡 IP ESP32: ${networkData.ip}`, 'info');
-      }
-    }
-  });
-  
-  return () => unsubscribe();
-}, [deviceId, addLog]);
-
   useEffect(() => {
     if (!deviceId) return;
     
@@ -479,89 +415,56 @@ useEffect(() => {
 
   // ✅ FUNCIÓN PARA CARGAR EJEMPLO DE SISMO
   const cargarEjemplo = async (ejemplo) => {
-  try {
-    addLog(`📂 Cargando: ${ejemplo.nombre}`, 'info');
-    setLoading(true);
-    
-    const response = await fetch(ejemplo.archivo);
-    
-    if (!response.ok) {
-      throw new Error(`Archivo no encontrado: ${ejemplo.archivo}`);
-    }
-    
-    const csvText = await response.text();
-    
-    const lines = csvText.trim().split('\n');
-    const data = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      
-      const [time, amplitude] = line.split(',').map(val => parseFloat(val.trim()));
-      
-      if (!isNaN(time) && !isNaN(amplitude)) {
-        data.push({ time, amplitude });
-      }
-    }
-    
-    if (data.length === 0) {
-      throw new Error('No se encontraron datos válidos en el archivo');
-    }
-    
-    // 🆕 NUEVO: CALCULAR FRECUENCIA DOMINANTE
     try {
-       console.log('📊 DATOS CARGADOS:', {
-    puntos: data.length,
-    primerPunto: data[0],
-    ultimoPunto: data[data.length - 1],
-    duracion: data[data.length - 1].time - data[0].time
-  });
-  
-  const freqResult = calculateDominantFrequency(data);
-  
-  console.log('✅ FRECUENCIA CALCULADA:', freqResult);
-  
-  setDominantFreqResult(freqResult);
-  setIsHistoricalMode(true);
+      addLog(`📂 Cargando: ${ejemplo.nombre}`, 'info');
+      setLoading(true);
       
-      // 🆕 NUEVO: ACTUALIZAR CONTROLES AUTOMÁTICAMENTE
-      setManualParams(prev => ({
-        ...prev,
-        frequency: freqResult.frequency,
-        duration: freqResult.duration
-      }));
+      const response = await fetch(ejemplo.archivo);
       
-      setCrankPosition(freqResult.recommendedPosition);
+      if (!response.ok) {
+        throw new Error(`Archivo no encontrado: ${ejemplo.archivo}`);
+      }
+      
+      const csvText = await response.text();
+      
+      const lines = csvText.trim().split('\n');
+      const data = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const [time, amplitude] = line.split(',').map(val => parseFloat(val.trim()));
+        
+        if (!isNaN(time) && !isNaN(amplitude)) {
+          data.push({ time, amplitude });
+        }
+      }
+      
+      if (data.length === 0) {
+        throw new Error('No se encontraron datos válidos en el archivo');
+      }
+      
+      setSeismicData(data);
+      setFileName(ejemplo.nombre);
+      setDuration(data[data.length - 1].time);
+      setCurrentTime(0);
+      setIsCSVLoaded(true);
+
+      setCrankPosition(ejemplo.posicionRecomendada);
       
       addLog(`✅ ${ejemplo.nombre} cargado (${data.length} puntos)`, 'success');
-      addLog(`📊 Frecuencia dominante: ${freqResult.frequency.toFixed(2)} Hz`, 'info');
-      addLog(`📐 Período dominante: ${freqResult.period.toFixed(2)} s`, 'info');
-      addLog(`🏢 ${freqResult.vulnerableBuildings}`, 'info');
-      addLog(`⚙️ Posición biela: ${freqResult.recommendedPosition} (auto)`, 'success');
+      addLog(`💡 Sugerencia: Usar posición ${ejemplo.posicionRecomendada}`, 'info');
+      addLog(`🌍 Magnitud: ${ejemplo.magnitud} - ${ejemplo.descripcion}`, 'info');
       
-    } catch (calcError) {
-      console.warn('⚠️ No se pudo calcular frecuencia dominante:', calcError);
-      addLog(`⚠️ Frecuencia no calculada, usando default`, 'warning');
-      setDominantFreqResult(null);
-      setIsHistoricalMode(false);
-      setCrankPosition(ejemplo.posicionRecomendada);
+    } catch (error) {
+      console.error('Error cargando ejemplo:', error);
+      addLog(`❌ Error: ${error.message}`, 'error');
+      alert(`No se pudo cargar el ejemplo:\n${error.message}\n\nAsegúrate de tener los archivos CSV en la carpeta public/examples/`);
+    } finally {
+      setLoading(false);
     }
-    
-    setSeismicData(data);
-    setFileName(ejemplo.nombre);
-    setDuration(data[data.length - 1].time);
-    setCurrentTime(0);
-    setIsCSVLoaded(true);
-    
-  } catch (error) {
-    console.error('Error cargando ejemplo:', error);
-    addLog(`❌ Error: ${error.message}`, 'error');
-    alert(`No se pudo cargar el ejemplo:\n${error.message}\n\nAsegúrate de tener los archivos CSV en la carpeta public/examples/`);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -605,9 +508,7 @@ useEffect(() => {
   const generateManualWave = async () => {
     addLog(`⚙️ ${manualParams.waveform}`, 'info');
     setLoading(true);
-    setIsHistoricalMode(false);
-    setDominantFreqResult(null);
-
+    
     const points = [];
     const samples = manualParams.duration * 100;
     
@@ -756,14 +657,41 @@ const handlePlay = async () => {
   try {
     let frequencyToUse = manualParams.frequency;
     let durationToUse = manualParams.duration;
+    let modoDescripcion = 'Generación local';
     
-    // 🆕 SI ESTÁ EN MODO HISTÓRICO, USAR FRECUENCIA DOMINANTE
-    if (isHistoricalMode && dominantFreqResult) {
-      frequencyToUse = dominantFreqResult.frequency;
-      durationToUse = dominantFreqResult.duration;
+    // 🎯 Si es CSV, calcular período/frecuencia dominante
+    if (fileName.includes('.csv') || fileName.includes('.txt')) {
+      durationToUse = duration;
       
-      addLog(`🌍 Modo sismo histórico activado`, 'info');
-      addLog(`📊 Usando frecuencia dominante: ${frequencyToUse.toFixed(2)} Hz`, 'info');
+      // Método 1: Contar cruces por cero (frecuencia promedio)
+      let zeroCrossings = 0;
+      for (let i = 1; i < seismicData.length; i++) {
+        if ((seismicData[i-1].amplitude * seismicData[i].amplitude) < 0) {
+          zeroCrossings++;
+        }
+      }
+      
+      // Frecuencia = (cruces/2) / duración total
+      const estimatedFreq = (zeroCrossings / 2) / duration;
+      
+      // Limitar al rango del sistema mecánico (0.5-5 Hz)
+      frequencyToUse = Math.min(5.0, Math.max(0.5, estimatedFreq));
+      
+      // Calcular período para referencia educativa
+      const periodoDominante = 1 / frequencyToUse;
+      
+      modoDescripcion = `CSV (Sismo Real)`;
+      addLog(`📊 Análisis espectral:`, 'info');
+      addLog(`   Frecuencia dominante: ${frequencyToUse.toFixed(2)} Hz`, 'info');
+      addLog(`   Período dominante: ${periodoDominante.toFixed(2)}s`, 'info');
+      
+      // Clasificar tipo de suelo según período
+      let tipoSuelo = '';
+      if (periodoDominante < 0.4) tipoSuelo = 'Roca dura / Estructuras rígidas';
+      else if (periodoDominante < 0.8) tipoSuelo = 'Suelo firme / Edificios medios';
+      else tipoSuelo = 'Suelo blando / Edificios altos';
+      
+      addLog(`   Tipo de respuesta: ${tipoSuelo}`, 'info');
     }
     
     await set(ref(database, `devices/${deviceId}/commands`), {
@@ -776,7 +704,7 @@ const handlePlay = async () => {
       timestamp: Date.now()
     });
     
-    addLog(`✅ ${frequencyToUse.toFixed(2)}Hz, ${currentConfig.amplitude}mm, ${durationToUse}s`, 'success');
+    addLog(`✅ ${modoDescripcion}: ${frequencyToUse.toFixed(2)}Hz, ${currentConfig.amplitude}mm, ${durationToUse}s`, 'success');
     
   } catch (error) {
     addLog(`❌ ${error.message}`, 'error');
@@ -856,57 +784,7 @@ const handlePlay = async () => {
       alert('⚠️ No se puede conectar al dispositivo. IP no disponible.');
     }
   };
-const clearHistoricalMode = () => {
-  setIsHistoricalMode(false);
-  setDominantFreqResult(null);
-  addLog('🔓 Modo manual activado', 'info');
-};
 
-const estimateFrequencyFromMetadata = (pga, duracion) => {
-    let frequency;
-    
-    if (duracion > 50) {
-      if (pga > 15) {
-        frequency = 0.8;
-      } else if (pga > 10) {
-        frequency = 1.2;
-      } else {
-        frequency = 1.5;
-      }
-    } else if (duracion > 30) {
-      if (pga > 12) {
-        frequency = 1.2;
-      } else if (pga > 8) {
-        frequency = 1.5;
-      } else {
-        frequency = 1.8;
-      }
-    } else {
-      if (pga > 10) {
-        frequency = 1.5;
-      } else if (pga > 6) {
-        frequency = 2.0;
-      } else {
-        frequency = 2.5;
-      }
-    }
-    
-    frequency = Math.min(2.5, Math.max(0.5, frequency));
-    
-    let recommendedPosition;
-    if (frequency >= 2.5) {
-      recommendedPosition = 2;
-    } else if (frequency >= 1.8) {
-      recommendedPosition = 3;
-    } else if (frequency >= 1.2) {
-      recommendedPosition = 4;
-    } else {
-      recommendedPosition = 5;
-    }
-    
-    return { frequency, recommendedPosition };
-  };
-  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <div className="container mx-auto px-4 py-8">
@@ -967,197 +845,10 @@ const estimateFrequencyFromMetadata = (pga, duracion) => {
             </div>
           </div>
         </div>
-{/* 🆕 PANEL DE DIAGNÓSTICO DE RED */}
-{esp32Info.ip && (
-  <div className="mb-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border-2 border-purple-500/50 rounded-xl p-6">
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-3">
-        <div className="bg-purple-500/20 p-3 rounded-lg">
-          <Wifi className="w-6 h-6 text-purple-400" />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-white">Información de Red ESP32</h3>
-          <p className="text-sm text-purple-300">Diagnóstico y acceso directo</p>
-        </div>
-      </div>
-      
-      <div className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
-        connectionStatus === 'connected' 
-          ? 'bg-green-500/20 border border-green-500/50' 
-          : 'bg-red-500/20 border border-red-500/50'
-      }`}>
-        <div className={`w-3 h-3 rounded-full ${
-          connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 'bg-red-400'
-        }`}></div>
-        <span className={`font-semibold text-sm ${
-          connectionStatus === 'connected' ? 'text-green-300' : 'text-red-300'
-        }`}>
-          {connectionStatus === 'connected' ? 'Conectado' : 'Desconectado'}
-        </span>
-      </div>
-    </div>
-    
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-      <div className="bg-slate-800/50 rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl">🌐</span>
-          <span className="text-sm text-gray-400">Dirección IP</span>
-        </div>
-        <div className="font-mono text-lg font-bold text-blue-400">
-          {esp32Info.ip || 'No disponible'}
-        </div>
-      </div>
-      
-      <div className="bg-slate-800/50 rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl">📶</span>
-          <span className="text-sm text-gray-400">Red WiFi</span>
-        </div>
-        <div className="font-medium text-white truncate">
-          {esp32Info.ssid || 'Desconocida'}
-        </div>
-        <div className="text-xs text-gray-400 mt-1">
-          Señal: {esp32Info.rssi}dBm
-        </div>
-      </div>
-      
-      <div className="bg-slate-800/50 rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl">⏱️</span>
-          <span className="text-sm text-gray-400">Última conexión</span>
-        </div>
-        <div className="text-sm text-white">
-          {esp32Info.lastSeen 
-            ? new Date(esp32Info.lastSeen * 1000).toLocaleTimeString('es-AR')
-            : 'N/A'
-          }
-        </div>
-      </div>
-      
-      <div className="bg-slate-800/50 rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl">🕐</span>
-          <span className="text-sm text-gray-400">Tiempo activo</span>
-        </div>
-        <div className="text-sm text-white">
-          {esp32Info.uptime 
-            ? `${Math.floor(esp32Info.uptime / 3600)}h ${Math.floor((esp32Info.uptime % 3600) / 60)}m`
-            : 'N/A'
-          }
-        </div>
-      </div>
-    </div>
-    
-    <div className="flex flex-wrap gap-3">
-      <button
-        onClick={() => {
-          if (esp32Info.ip) {
-            window.open(`http://${esp32Info.ip}`, '_blank');
-            addLog(`🌐 Abriendo portal web: ${esp32Info.ip}`, 'info');
-          }
-        }}
-        disabled={!esp32Info.ip}
-        className="flex-1 min-w-[200px] bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 
-                   disabled:from-gray-600 disabled:to-gray-700 px-4 py-3 rounded-lg font-semibold transition-all 
-                   flex items-center justify-center gap-2 disabled:cursor-not-allowed"
-      >
-        <span className="text-xl">🌐</span>
-        Abrir Portal Web ESP32
-      </button>
-      
-      <button
-        onClick={async () => {
-          try {
-            addLog('🔄 Solicitando reconexión WiFi...', 'command');
-            await set(ref(database, `devices/${deviceId}/commands`), {
-              action: 'RECONNECT_WIFI',
-              timestamp: Date.now()
-            });
-            addLog('✅ Comando de reconexión enviado', 'success');
-          } catch (error) {
-            addLog(`❌ Error: ${error.message}`, 'error');
-          }
-        }}
-        className="flex-1 min-w-[200px] bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600 
-                   px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
-      >
-        <span className="text-xl">🔄</span>
-        Forzar Reconexión WiFi
-      </button>
-      
-      <button
-        onClick={async () => {
-          try {
-            addLog('🔄 Reiniciando ESP32...', 'command');
-            await set(ref(database, `devices/${deviceId}/commands`), {
-              action: 'RESTART',
-              timestamp: Date.now()
-            });
-            addLog('✅ Comando de reinicio enviado', 'success');
-            alert('⚠️ El ESP32 se reiniciará en 3 segundos. Espera 30 segundos para que se reconecte.');
-          } catch (error) {
-            addLog(`❌ Error: ${error.message}`, 'error');
-          }
-        }}
-        className="flex-1 min-w-[200px] bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 
-                   px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
-      >
-        <span className="text-xl">🔌</span>
-        Reiniciar ESP32
-      </button>
-    </div>
-    
-    {connectionStatus !== 'connected' && (
-      <div className="mt-4 bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-4 flex items-start gap-3">
-        <AlertCircle className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <p className="font-semibold text-yellow-300 mb-2">⚠️ ESP32 Desconectado</p>
-          <ul className="text-sm text-yellow-200 space-y-1 list-disc list-inside">
-            <li>Intenta <strong>Forzar Reconexión WiFi</strong> primero</li>
-            <li>Si no funciona, usa <strong>Reiniciar ESP32</strong></li>
-            <li>Como último recurso, desconecta y reconecta la alimentación</li>
-          </ul>
-        </div>
-      </div>
-    )}
-  </div>
-)}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Panel Izquierdo */}
           <div className="lg:col-span-1 space-y-6">
-             {/* 🆕 NUEVO: BANNER DE MODO HISTÓRICO */}
-  {isHistoricalMode && dominantFreqResult && (
-    <div className="bg-blue-900/30 border-2 border-blue-500/50 rounded-lg p-4">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <h4 className="font-semibold text-blue-300 flex items-center text-sm">
-            <span className="mr-2">🌍</span>
-            Modo Sismo Histórico Activo
-          </h4>
-          <p className="text-xs text-blue-200 mt-1">
-            Los controles están configurados automáticamente
-          </p>
-        </div>
-        <button
-          onClick={clearHistoricalMode}
-          className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded transition-colors"
-        >
-          🔓 Desbloquear
-        </button>
-      </div>
-      <div className="text-xs text-blue-200 space-y-1 mt-2">
-        <div className="flex justify-between">
-          <span>Frecuencia:</span>
-          <span className="font-mono font-bold">{dominantFreqResult.frequency.toFixed(2)} Hz</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Posición biela:</span>
-          <span className="font-mono font-bold">{dominantFreqResult.recommendedPosition}</span>
-        </div>
-      </div>
-    </div>
-  )}
             {/* Cargar CSV */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -1219,58 +910,37 @@ const estimateFrequencyFromMetadata = (pga, duracion) => {
                 </p>
               </div>
             </div>
-            {/* 🆕 NOTA EDUCATIVA MEJORADA */}
-{isHistoricalMode && dominantFreqResult && (
-  <div className="bg-gradient-to-br from-blue-50/10 to-indigo-50/10 border-2 border-blue-300/50 rounded-lg p-4">
-    <h4 className="font-semibold text-blue-300 mb-3 flex items-center text-sm">
-      <span className="mr-2">📚</span>
-      Nota Educativa - Frecuencia Dominante
-    </h4>
-    
-    {/* Información del cálculo */}
-    <div className="bg-white/5 rounded-lg p-3 mb-3">
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-400">Cruces por cero:</span>
-        <span className="font-mono text-blue-300">{dominantFreqResult.zeroCrossings}</span>
-      </div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-400">Duración registro:</span>
-        <span className="font-mono text-blue-300">{dominantFreqResult.duration.toFixed(1)}s</span>
-      </div>
-      <div className="border-t border-gray-600/30 pt-2 mt-2">
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-300 font-medium">Frecuencia dominante:</span>
-          <span className="font-mono font-bold text-indigo-400">
-            {dominantFreqResult.frequency.toFixed(2)} Hz
-          </span>
-        </div>
-        <div className="flex justify-between text-xs mt-1">
-          <span className="text-gray-300 font-medium">Período dominante:</span>
-          <span className="font-mono font-bold text-indigo-400">
-            {dominantFreqResult.period.toFixed(2)} s
-          </span>
-        </div>
-      </div>
-    </div>
-
-    {/* Estructuras vulnerables */}
-    <div className="bg-amber-900/20 border border-amber-600/30 rounded-lg p-2 mb-3">
-      <p className="text-xs text-amber-300">
-        <strong>🏢 Estructuras vulnerables:</strong><br/>
-        {dominantFreqResult.vulnerableBuildings}
-      </p>
-    </div>
-
-    {/* Limitación del sistema */}
-    <div className="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-2">
-      <p className="text-xs text-yellow-200">
-        <strong>⚠️ Limitación:</strong> Este sistema reproduce solo la <strong>frecuencia dominante</strong> mediante 
-        movimiento sinusoidal. Los sismos reales tienen un <strong>espectro de respuesta completo</strong> con 
-        múltiples frecuencias simultáneas que varían en el tiempo.
-      </p>
-    </div>
-  </div>
-)}
+            {/* 🎓 NOTA EDUCATIVA - Agregar aquí */}
+            {isCSVLoaded && seismicData.length > 0 && (
+              <div className="bg-blue-900/20 border border-blue-600/30 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-300 mb-2 flex items-center text-sm">
+                  <span className="mr-2">📚</span>
+                  Nota Educativa - Espectro de Respuesta
+                </h4>
+                <div className="text-xs text-blue-200 space-y-2">
+                  <p>
+                    • Este sistema calcula la <strong>frecuencia dominante</strong> del sismo 
+                    mediante análisis de cruces por cero del acelerograma.
+                  </p>
+                  <p>
+                    • Los sismos reales tienen múltiples frecuencias (espectro de respuesta completo), 
+                    pero esta simulación usa una aproximación sinusoidal de frecuencia constante.
+                  </p>
+                  <p className="font-semibold mt-2">
+                    El período/frecuencia dominante determina qué estructuras son más vulnerables:
+                  </p>
+                  <ul className="ml-4 mt-1 space-y-1">
+                    <li>• <strong>Alta frecuencia (2-5 Hz):</strong> Afecta estructuras bajas y rígidas</li>
+                    <li>• <strong>Media frecuencia (1-2 Hz):</strong> Afecta edificios de altura media</li>
+                    <li>• <strong>Baja frecuencia (0.5-1 Hz):</strong> Afecta edificios altos y flexibles</li>
+                  </ul>
+                  <p className="mt-2 bg-yellow-900/20 border border-yellow-600/30 rounded p-2">
+                    <strong>⚠️ Limitación del sistema:</strong> Para mayor realismo se requeriría 
+                    reproducción punto por punto con las variaciones de frecuencia del sismo real.
+                  </p>
+                </div>
+              </div>
+            )}
             {/* Generador - ⭐ SIN SLIDER DE AMPLITUD */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -1330,8 +1000,7 @@ const estimateFrequencyFromMetadata = (pga, duracion) => {
                       });
                     }}
                     className="w-full bg-slate-700 px-3 py-2 rounded-lg"
-                    disabled={isHistoricalMode}
-                    >
+                  >
                     <optgroup label="Ondas Básicas">
                       <option value="sine">🌊 Senoidal</option>
                       <option value="square">⬜ Cuadrada</option>
@@ -1376,36 +1045,28 @@ const estimateFrequencyFromMetadata = (pga, duracion) => {
                 </div>
                 
                 <div>
-                 <label className="block text-sm mb-2">
-  Frecuencia (Hz): {manualParams.frequency.toFixed(1)}
-  {isHistoricalMode && <span className="text-yellow-400 ml-2">🔒 Bloqueado</span>} {/* 🆕 NUEVO */}
-</label>
-<input
-  type="range"
-  min="0.5"
-  max="10"
-  step="0.1"
-  value={manualParams.frequency}
-  onChange={(e) => setManualParams({...manualParams, frequency: parseFloat(e.target.value)})}
-  className="w-full"
-  disabled={isHistoricalMode} // 🆕 NUEVO
-/>
+                  <label className="block text-sm mb-2">Frecuencia (Hz): {manualParams.frequency}</label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="10"
+                    step="0.1"
+                    value={manualParams.frequency}
+                    onChange={(e) => setManualParams({...manualParams, frequency: parseFloat(e.target.value)})}
+                    className="w-full"
+                  />
                 </div>
                 
                 <div>
-                  <label className="block text-sm mb-2">
-  Duración (s): {manualParams.duration}
-  {isHistoricalMode && <span className="text-yellow-400 ml-2">🔒 Bloqueado</span>} {/* 🆕 NUEVO */}
-</label>
-<input
-  type="range"
-  min="5"
-  max="60"
-  value={manualParams.duration}
-  onChange={(e) => setManualParams({...manualParams, duration: parseInt(e.target.value)})}
-  className="w-full"
-  disabled={isHistoricalMode} // 🆕 NUEVO
-/>
+                  <label className="block text-sm mb-2">Duración (s): {manualParams.duration}</label>
+                  <input
+                    type="range"
+                    min="5"
+                    max="60"
+                    value={manualParams.duration}
+                    onChange={(e) => setManualParams({...manualParams, duration: parseInt(e.target.value)})}
+                    className="w-full"
+                  />
                 </div>
                 
                 <button
@@ -1429,20 +1090,18 @@ const estimateFrequencyFromMetadata = (pga, duracion) => {
               
               <div className="space-y-4">
                 <div>
-                <label className="block text-sm font-medium mb-2">
-  Posición de la Biela: {crankPosition}
-  {isHistoricalMode && <span className="text-yellow-400 ml-2">🔒 Auto</span>} {/* 🆕 NUEVO */}
-</label>
-<input
-  type="range"
-  min="1"
-  max="5"
-  step="1"
-  value={crankPosition}
-  onChange={(e) => setCrankPosition(parseInt(e.target.value))}
-  className="w-full accent-purple-500"
-  disabled={isHistoricalMode} // 🆕 NUEVO
-/>
+                  <label className="block text-sm font-medium mb-2">
+                    Posición de la Biela: {crankPosition}
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    value={crankPosition}
+                    onChange={(e) => setCrankPosition(parseInt(e.target.value))}
+                    className="w-full accent-purple-500"
+                  />
                   <div className="flex justify-between text-xs text-purple-300 mt-1">
                     <span>1</span>
                     <span>2</span>
@@ -1471,7 +1130,7 @@ const estimateFrequencyFromMetadata = (pga, duracion) => {
                   </div>
                 </div>
 
-                {manualParams.frequency > 3 && crankPosition >= 4 && !isHistoricalMode && ( 
+                {manualParams.frequency > 3 && crankPosition >= 4 && (
                   <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-3 flex items-start space-x-2">
                     <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-yellow-200">
@@ -1506,183 +1165,115 @@ const estimateFrequencyFromMetadata = (pga, duracion) => {
           {/* Panel Derecho */}
           <div className="lg:col-span-2 space-y-6">
             {/* Gráfico */}
-<div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
-  <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-    <Activity className="w-5 h-5" />
-    Visualización en Tiempo Real
-  </h2>
-  
-  {seismicData.length > 0 ? (
-    <div className="space-y-4">
-      <ResponsiveContainer width="100%" height={350}>
-        <LineChart data={visibleData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
-          <defs>
-            <linearGradient id="colorAmplitude" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
-            </linearGradient>
-          </defs>
-          
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-          
-          <XAxis 
-            dataKey="time" 
-            stroke="#9CA3AF"
-            domain={[
-              Math.max(0, currentTime - 5), 
-              Math.min(duration, currentTime + 5)
-            ]}
-            type="number"
-            allowDataOverflow={false}
-            label={{ value: 'Tiempo (s)', position: 'insideBottom', offset: -5 }}
-            tickFormatter={(value) => value.toFixed(1)}
-          />
-          
-          <YAxis 
-            stroke="#9CA3AF"
-            domain={(() => {
-              if (seismicData.length === 0) return [-100, 100];
+            <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Activity className="w-5 h-5" />
+                Visualización en Tiempo Real
+              </h2>
               
-              const amps = seismicData.map(d => d.amplitude);
-              const min = Math.min(...amps);
-              const max = Math.max(...amps);
-              const padding = Math.max(10, (max - min) * 0.15);
-              
-              return [
-                Math.floor(min - padding),
-                Math.ceil(max + padding)
-              ];
-            })()}
-            label={{ value: 'Amplitud (mm)', angle: -90, position: 'insideLeft' }}
-            width={60}
-          />
-          
-          <Tooltip 
-            contentStyle={{ 
-              backgroundColor: '#1e293b', 
-              border: '1px solid #475569',
-              borderRadius: '8px',
-              padding: '8px'
-            }}
-            labelStyle={{ color: '#e5e7eb', fontWeight: 'bold' }}
-            formatter={(value) => [value.toFixed(2) + ' mm', 'Amplitud']}
-            labelFormatter={(value) => 'Tiempo: ' + value.toFixed(2) + 's'}
-          />
-          
-          <ReferenceLine 
-            x={currentTime} 
-            stroke="#ef4444" 
-            strokeWidth={1.5} 
-            strokeDasharray="3 3"
-            label={{ 
-              value: '▼', 
-              position: 'top', 
-              fill: '#ef4444',
-              fontSize: 20,
-              offset: 10
-            }} 
-          />
-          
-          <Line 
-            type="monotone" 
-            dataKey="amplitude" 
-            stroke="#3b82f6" 
-            strokeWidth={2.5}
-            dot={false}
-            animationDuration={0}
-            isAnimationActive={false}
-            fill="url(#colorAmplitude)"
-            fillOpacity={0.3}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+              {seismicData.length > 0 ? (
+                <div className="space-y-4">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={visibleData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis 
+                        dataKey="time" 
+                        stroke="#9CA3AF"
+                        domain={[Math.max(0, currentTime - 5), Math.min(duration, currentTime + 5)]}
+                        type="number"
+                        label={{ value: 'Tiempo (s)', position: 'insideBottom', offset: -5 }}
+                        tickFormatter={(value) => value.toFixed(1)}
+                      />
+                      <YAxis 
+                        stroke="#9CA3AF"
+                        domain={['auto', 'auto']}
+                        label={{ value: 'Amplitud (mm)', angle: -90, position: 'insideLeft' }}
+                      />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }}
+                        labelStyle={{ color: '#e5e7eb' }}
+                        formatter={(value) => [value.toFixed(2) + 'mm', 'Amplitud']}
+                        labelFormatter={(value) => 'Tiempo: ' + value.toFixed(2) + 's'}
+                      />
+                      <ReferenceLine 
+                        x={currentTime} 
+                        stroke="#ef4444" 
+                        strokeWidth={2} 
+                        label={{ value: 'Actual', position: 'top', fill: '#ef4444' }} 
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="amplitude" 
+                        stroke="#3b82f6" 
+                        strokeWidth={2}
+                        dot={false}
+                        animationDuration={0}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
 
-      {/* Métricas */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-slate-700/50 p-4 rounded-lg">
-          <div className="text-sm text-gray-400">Tiempo</div>
-          <div className="text-2xl font-bold">
-            {currentTime.toFixed(2)}s
-          </div>
-        </div>
-        <div className="bg-slate-700/50 p-4 rounded-lg">
-          <div className="text-sm text-gray-400">Amplitud</div>
-          <div className="text-2xl font-bold text-blue-400">{getCurrentAmplitude()}mm</div>
-        </div>
-        <div className="bg-slate-700/50 p-4 rounded-lg">
-          <div className="text-sm text-gray-400">Duración</div>
-          <div className="text-2xl font-bold">{duration.toFixed(1)}s</div>
-        </div>
-      </div>
+                  {/* Métricas */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-slate-700/50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-400">Tiempo</div>
+                      <div className="text-2xl font-bold">
+                        {currentTime.toFixed(2)}s
+                      </div>
+                    </div>
+                    <div className="bg-slate-700/50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-400">Amplitud</div>
+                      <div className="text-2xl font-bold text-blue-400">{getCurrentAmplitude()}mm</div>
+                    </div>
+                    <div className="bg-slate-700/50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-400">Duración</div>
+                      <div className="text-2xl font-bold">{duration.toFixed(1)}s</div>
+                    </div>
+                  </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-purple-500/30">
-          <p className="text-sm text-purple-300 mb-1">Posición biela</p>
-          <p className="text-2xl font-bold">{crankPosition}</p>
-          <p className="text-xs text-purple-400 mt-1">Radio: {currentConfig.radius}mm</p>
-        </div>
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-purple-500/30">
-          <p className="text-sm text-purple-300 mb-1">Amplitud real</p>
-          <p className="text-2xl font-bold">{currentConfig.amplitude}mm</p>
-          <p className="text-xs text-purple-400 mt-1">Pico a pico</p>
-        </div>
-      </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-purple-500/30">
+                      <p className="text-sm text-purple-300 mb-1">Posición biela</p>
+                      <p className="text-2xl font-bold">{crankPosition}</p>
+                      <p className="text-xs text-purple-400 mt-1">Radio: {currentConfig.radius}mm</p>
+                    </div>
+                    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-purple-500/30">
+                      <p className="text-sm text-purple-300 mb-1">Amplitud real</p>
+                      <p className="text-2xl font-bold">{currentConfig.amplitude}mm</p>
+                      <p className="text-xs text-purple-400 mt-1">Pico a pico</p>
+                    </div>
+                  </div>
 
-      {/* Barra de progreso mejorada */}
-      <div className="space-y-3 mt-4">
-        {/* Barra visual */}
-        <div className="relative bg-slate-700/50 rounded-lg h-2 overflow-hidden border border-slate-600">
-          <div 
-            className="absolute h-full bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-600 transition-all duration-300"
-            style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
-          >
-            <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-          </div>
-          
-          {/* Indicador de posición actual */}
-          <div 
-            className="absolute top-1/2 -translate-y-1/2 w-1 h-4 bg-red-500 shadow-lg shadow-red-500/50"
-            style={{ 
-              left: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
-              transform: 'translate(-50%, -50%)'
-            }}
-          ></div>
-        </div>
+                  {/* Barra */}
+                  <div className="space-y-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max={duration}
+                      step="0.01"
+                      value={currentTime}
+                      onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
+                      className="w-full"
+                      disabled={isPlaying}
+                    />
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>0s</span>
+                      <span>{duration > 0 ? ((currentTime / duration) * 100).toFixed(1) : 0}%</span>
+                      <span>{duration.toFixed(1)}s</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-gray-400">
+                  <div className="text-center">
+                    <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>Carga un archivo o genera una onda</p>
+                  </div>
+                </div>
+              )}
+            </div>
 
-        {/* Slider invisible encima */}
-        <input
-          type="range"
-          min="0"
-          max={duration}
-          step="0.01"
-          value={currentTime}
-          onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
-          className="w-full h-2 -mt-5 opacity-0 cursor-pointer relative z-10"
-          disabled={isPlaying}
-        />
-
-        {/* Etiquetas */}
-        <div className="flex justify-between items-center text-xs">
-          <span className="text-gray-400">0s</span>
-          <span className="font-mono text-xl font-bold text-cyan-400">
-            {duration > 0 ? ((currentTime / duration) * 100).toFixed(1) : 0}%
-          </span>
-          <span className="text-gray-400">{duration.toFixed(1)}s</span>
-        </div>
-      </div>
-    </div>
-  ) : (
-    <div className="h-64 flex items-center justify-center text-gray-400">
-      <div className="text-center">
-        <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
-        <p>Carga un archivo o genera una onda</p>
-      </div>
-    </div>
-  )}
-</div>
-
-            
-             {/* Controles */}
+            {/* Controles */}
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4">Controles</h2>
               
@@ -1904,57 +1495,46 @@ const estimateFrequencyFromMetadata = (pga, duracion) => {
 
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {EJEMPLOS_SISMOS.map((ejemplo, index) => {
-                  // 🆕 CALCULAR frecuencia y posición ANTES de renderizar
-                  const { frequency, recommendedPosition } = estimateFrequencyFromMetadata(
-                    ejemplo.pga, 
-                    ejemplo.duracion
-                  );
-
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        cargarEjemplo(ejemplo);
-                        setMostrarModalSismos(false);
-                      }}
-                      disabled={loading}
-                      className="bg-slate-800/50 hover:bg-slate-700/70 border-2 border-slate-700 hover:border-blue-500 
-                                rounded-xl p-4 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-                                flex items-start space-x-4 text-left group"
-                    >
-                      <div className="text-4xl mt-1 group-hover:scale-110 transition-transform">
-                        {ejemplo.icon}
+                {EJEMPLOS_SISMOS.map((ejemplo, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      cargarEjemplo(ejemplo);
+                      setMostrarModalSismos(false);
+                    }}
+                    disabled={loading}
+                    className="bg-slate-800/50 hover:bg-slate-700/70 border-2 border-slate-700 hover:border-blue-500 
+                               rounded-xl p-4 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+                               flex items-start space-x-4 text-left group"
+                  >
+                    <div className="text-4xl mt-1 group-hover:scale-110 transition-transform">
+                      {ejemplo.icon}
+                    </div>
+                    
+                    <div className="flex-1">
+                      <div className="font-semibold text-white text-base mb-1 group-hover:text-blue-300 transition-colors">
+                        {ejemplo.nombre}
                       </div>
-                      
-                      <div className="flex-1">
-                        <div className="font-semibold text-white text-base mb-1 group-hover:text-blue-300 transition-colors">
-                          {ejemplo.nombre}
-                        </div>
-                        <div className="text-sm text-gray-400 mb-2">
-                          {ejemplo.descripcion}
-                        </div>
-                        <div className="flex items-center space-x-2 text-xs">
-                          <span className="bg-red-500/20 text-red-300 px-2 py-1 rounded-md font-mono font-bold border border-red-500/30">
-                            M {ejemplo.magnitud}
-                          </span>
-                          <span className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded-md border border-purple-500/30">
-                            Pos. {recommendedPosition}
-                          </span>
-                          <span className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md font-mono border border-blue-500/30">
-                            ~{frequency.toFixed(1)} Hz
-                          </span>
-                        </div>
+                      <div className="text-sm text-gray-400 mb-2">
+                        {ejemplo.descripcion}
                       </div>
-                      
-                      <div className="text-blue-400 group-hover:translate-x-1 transition-transform">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
+                      <div className="flex items-center space-x-2 text-xs">
+                        <span className="bg-red-500/20 text-red-300 px-2 py-1 rounded-md font-mono font-bold border border-red-500/30">
+                          M {ejemplo.magnitud}
+                        </span>
+                        <span className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded-md border border-purple-500/30">
+                          Pos. {ejemplo.posicionRecomendada}
+                        </span>
                       </div>
-                    </button>
-                  );
-                })}
+                    </div>
+                    
+                    <div className="text-blue-400 group-hover:translate-x-1 transition-transform">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))}
               </div>
 
               <div className="mt-6 bg-blue-900/20 border border-blue-600/30 rounded-lg p-4">
